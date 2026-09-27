@@ -1,0 +1,201 @@
+/* ============================================================
+   此间 · 圆角与分隔（Radius / Separator）
+
+   两条来自 Apple HIG 的做法：
+
+   1. 连续圆角（squircle）
+      Electron 提供独占的 CSS 规则 `-electron-corner-smoothing`，
+      官方说明它「非常接近 Apple 在 SwiftUI 里的连续圆角」。
+      注意 `system-ui` 关键字在 macOS 上是 60%、在 Windows/Linux 上被解析为 0%
+      （也就是普通圆角）。这里显式写 60%，才能在 Windows 上拿到那种曲率。
+
+   2. 用模糊带代替硬分割线
+      Apple 在 WWDC25 讲 scroll edge effect 时的原话是
+      「replacing hard dividers with subtle blur」——
+      分隔的作用是说明「UI 与内容在哪里交界」，不是画一条框。
+      所以侧栏与标题栏的边界都用「会淡出的模糊带 + 一道渐隐发丝线」表达。
+   ============================================================ */
+
+/* ---------- 骨架 ----------
+   窗口是不透明的（透明窗口在 Windows 上会拖累整页合成），
+   圆角做在应用外壳上，与底色自然衔接。 */
+body.framed {
+  padding: 0;
+  /* 必须是透明的：窗口现在是真的透明窗口，底色由 .ambient 里的光学层画布提供。
+     这里若铺一层不透明底色，就会把圆角之外重新填满，四个角又变成方的。 */
+  background: transparent;
+}
+
+body.framed .app {
+  height: 100vh;
+  /* 底色由 body 提供（见上面 body.framed 的 background）。
+     这里必须保持透明：.ambient 的 z-index 是 --z-bg(0)，而 .app 是
+     --z-content(10)，一块不透明的 .app 会把整层环境光完全盖住 ——
+     极光「看不见 / 看不见在动」根因就在这里，而不是动画参数的问题。 */
+  background: transparent;
+}
+
+body.framed .ambient {
+  /* 必须与 .app 用同一个半径。
+     .ambient 里是光学层的整块画布，方角的话画布会在 .app 的圆角之外
+     露出一小块三角形 —— 看上去就是"程序圆角没裁干净，还剩一点点"。 */
+  border-radius: var(--r-window);
+  overflow: hidden;
+}
+
+/* ---------- 圆角档位 ----------
+   同心圆角规则（Apple）：子圆角 = 父圆角 − 内边距。
+   用 calc 算，嵌套时才不会出现「角不匹配」的别扭感。 */
+:root {
+  --r-window: 26px;
+  --r-card: 20px;
+  --r-panel: 26px;
+  --r-hero: 34px;
+}
+
+/* 需要连续曲率的表面 */
+.app,
+.card,
+.panel,
+.stat,
+.trace,
+.summary,
+.review-foot,
+.hero,
+.review-hero,
+.ring-block,
+.modal,
+.write-block,
+.print-stage,
+.polaroid__face,
+.rail,
+.titlebar,
+.btn,
+.rail-card,
+.theme-opt,
+.cell,
+.polaroid__frame {
+  -electron-corner-smoothing: 60%;
+}
+
+.app {
+  border-radius: var(--r-window);
+  /* 必须裁切。否则 radius 只是画在 .app 自己身上，
+     而贴边的子元素（侧栏、标题栏、内容区）各自把方角画到窗口边缘上 ——
+     四个角就"收不干净"。overflow: clip 不产生滚动容器，比 hidden 更合适。 */
+  overflow: clip;
+  box-shadow: 0 0 0 1px rgba(74, 55, 38, 0.14), 0 18px 48px -18px rgba(53, 40, 28, 0.42);
+}
+
+.hero,
+.review-hero,
+.ring-block {
+  border-radius: var(--r-hero);
+}
+.modal {
+  border-radius: 32px;
+}
+.write-block,
+.print-stage {
+  border-radius: var(--r-panel);
+}
+.card,
+.panel,
+.stat,
+.trace,
+.summary,
+.review-foot {
+  border-radius: var(--r-card);
+}
+
+/* 侧栏：贴住窗口左缘，只保留外侧的大圆角 */
+.rail {
+  border-top-left-radius: var(--r-window);
+  border-bottom-left-radius: var(--r-window);
+}
+
+/* 标题栏：贴住窗口上缘 */
+.titlebar {
+  border-top-left-radius: var(--r-window);
+  border-top-right-radius: var(--r-window);
+}
+
+/* ============================================================
+   侧栏与内容区的交界
+   一条 10px 宽的模糊带（两端淡出）+ 一道极淡的渐隐发丝线。
+   比 border-right 轻得多，也更像材质之间的接缝。
+   ============================================================ */
+.rail-edge::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -10px;
+  width: 10px;
+  pointer-events: none;
+  z-index: 3;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 13%,
+    #000 87%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 13%, #000 87%, transparent 100%);
+  opacity: 0.9;
+}
+.rail-edge::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  pointer-events: none;
+  z-index: 4;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--separator-opaque) 16%,
+    var(--separator-opaque) 84%,
+    transparent 100%
+  );
+  filter: blur(0.6px);
+  opacity: 0.75;
+}
+
+/* ============================================================
+   标题栏与内容区的交界 —— 已取消
+   原先这里是「向下淡出的模糊带 + 一道向右淡出的发丝线」，
+   属于 Apple 的 scroll edge effect。但在这个界面里标题栏并不是
+   悬浮在可滚动内容之上，那条线只是一根多余的分隔，所以整个撤掉。
+   ============================================================ */
+.titlebar.hairline-h::after,
+.titlebar.hairline-h::before {
+  content: none;
+}
+
+/* ---------- 通用分隔（给别处备用） ---------- */
+.hairline-v {
+  position: relative;
+}
+.hairline-v::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--separator-opaque) 14%,
+    var(--separator-opaque) 74%,
+    transparent 100%
+  );
+  filter: blur(0.5px);
+  opacity: 0.85;
+}

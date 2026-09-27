@@ -1,0 +1,230 @@
+/* ============================================================
+   此间 · 行星环相纸墙
+   15 张相纸围成一个有厚度的环，缓慢自转；悬停停下并浮起放大。
+   ============================================================ */
+
+.ring-wrap {
+  --ring-r: 378px;
+  --ring-card-w: 135px;
+  --ring-h: 477px;
+  position: relative;
+  width: 100%;
+  height: var(--ring-h);
+  /* 平视：镜头与环心等高，透视只用来区分前后，不再制造俯仰感。
+     透视距离要明显大于环半径，否则前方相纸会被放得过大。 */
+  perspective: 2600px;
+  perspective-origin: 50% 50%;
+  user-select: none;
+  cursor: grab;
+  touch-action: pan-y;
+}
+.ring-wrap.is-dragging {
+  cursor: grabbing;
+}
+
+.ring-stage {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+/* 环心略高于几何中心：视觉重心更稳，前方相纸也不会顶到容器下沿 */
+.ring-spin {
+  position: absolute;
+  left: 50%;
+  /* 平视时环心就该在正中间 */
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* 中间的暖光池：让环看起来是浮在一束光里，而不是贴在背景上 */
+.ring-wrap::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(680px, 72%);
+  aspect-ratio: 1.5 / 1;
+  transform: translate(-50%, -46%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, var(--theme-glow), transparent 66%);
+  filter: blur(34px);
+  opacity: 0.62;
+  pointer-events: none;
+  animation: ring-glow 9s var(--e-in-out) infinite alternate;
+}
+@keyframes ring-glow {
+  from {
+    transform: translate(-50%, -46%) scale(0.94);
+    opacity: 0.5;
+  }
+  to {
+    transform: translate(-50%, -46%) scale(1.06);
+    opacity: 0.72;
+  }
+}
+
+/* 环下方的投影：椭圆，和倾斜后的环面对齐，给它一个「落地」的暗示 */
+.ring-shadow {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: calc(var(--ring-r) * 2.3);
+  height: calc(var(--ring-r) * 0.62);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ring-shadow__inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(53, 40, 28, 0.24), transparent 68%);
+  filter: blur(18px);
+}
+
+/* 环的轨道线：一个压扁的椭圆，给纵深一个参照 */
+.ring-axis {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--ring-r) * 2.42);
+  height: calc(var(--ring-r) * 0.66);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px dashed var(--theme-line);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+/* ---------- 单张相纸 ----------
+   位置用独立的 translate 属性表达（而不是挤进 transform 列表），
+   这样和下面的 3D 旋转互不干扰，也更好调。 */
+.ring-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--ring-card-w) * 1.36);
+  margin-left: calc(var(--ring-card-w) * -0.68);
+  margin-top: calc(var(--ring-card-w) * -0.81);
+  translate: 0 calc(var(--ring-r) * -0.03);
+  transform-style: preserve-3d;
+  /* 转到环上的角度：rotateY(0) 时卡片正对观察者 */
+  transform: rotate(var(--tilt, 0deg)) rotateY(var(--angle, 0deg)) translateZ(var(--ring-r));
+  transition: opacity 380ms var(--e-out), filter 380ms var(--e-out), translate 560ms var(--e-settle);
+  will-change: transform, opacity;
+}
+.ring-item--empty {
+  opacity: 0.45;
+}
+
+/* 悬停时把相纸从环上「摘下来」：
+   环会先把这张转到正前方（由 JS 处理），这里只负责抬起 + 放大 + 浮起。 */
+.ring-lift {
+  transform-style: preserve-3d;
+  transition: transform 560ms var(--e-settle);
+}
+.ring-item.is-hovered {
+  z-index: 60;
+}
+.ring-item.is-hovered .ring-lift {
+  transform: translateZ(70px) translateY(-14px) scale(1.3);
+}
+.ring-item.is-hovered .polaroid {
+  box-shadow: var(--shadow-xl);
+}
+
+/* 环上的相纸不参与常规的 hover 倾斜（那会破坏环的透视） */
+.ring-item .polaroid {
+  width: 100%;
+  box-shadow: var(--shadow-md);
+  transition: box-shadow 420ms var(--e-out);
+}
+.ring-item .polaroid.is-flippable:hover .polaroid__inner,
+.ring-item .polaroid.is-flippable.is-flipped:hover .polaroid__inner {
+  transform: none;
+}
+.ring-item .polaroid.is-flippable.is-flipped .polaroid__inner {
+  transform: rotateY(180deg);
+}
+.ring-item .polaroid__grain {
+  opacity: 0.18;
+}
+
+/* 未打卡的空白相纸：降饱和、更淡，不抢注意力 */
+.ring-item--empty .polaroid__frame--empty {
+  filter: saturate(0.4);
+}
+
+/* 悬停时浮起的小标注（第几天） */
+.ring-item::after {
+  content: "第 " attr(data-day) " 天";
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%) translateY(6px);
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms var(--e-out), transform 420ms var(--e-settle);
+}
+.ring-item.is-hovered::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ---------- 环下方的操作提示 ---------- */
+.ring-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  margin-top: var(--sp-3);
+  font-size: 12px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+.ring-hint span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ring-hint svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.75;
+}
+
+/* 环的进度指示：一条随旋转推进的细线 */
+.ring-progress {
+  position: relative;
+  width: min(420px, 62%);
+  height: 2px;
+  margin: var(--sp-5) auto 0;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+.ring-progress i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--theme));
+  transition: width 240ms linear;
+}
+
+@media (max-width: 1180px) {
+  .ring-wrap {
+    --ring-h: 330px;
+  }
+}

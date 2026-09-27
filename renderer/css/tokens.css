@@ -1,0 +1,277 @@
+/* ============================================================
+   此间 · 设计令牌（Design Tokens）
+   以 Apple Human Interface Guidelines 为基准
+   https://developer.apple.com/design/human-interface-guidelines
+
+   三条 HIG 原则贯穿整套令牌：
+   1. Clarity（清晰）  —— 字号层级、字重与留白承担信息层级，不用边框堆砌
+   2. Deference（退让）—— 界面材料让位于内容，相纸永远是最亮的东西
+   3. Depth（纵深）    —— 用分层阴影与半透明材料表达层次，而不是描边
+   ============================================================ */
+
+:root {
+  /* ---------- 纸感基底（Content Layer） ----------
+     整条纸感色阶压深了一档。原来看起来「曝光」，根因不是某一处太白，
+     而是全画面 91% 的像素都挤在 224-255 这一档里：底色 238、卡片 242，
+     两者只差 4，既没有层次也谈不上「柔和的白色」。
+     把基底压到 223 之后，卡片才重新变成「比纸亮一点的一层材料」。 */
+  --paper-000: #fbf7f1;
+  --paper-050: #e6dbca;
+  --paper-100: #efe5d8;
+  --paper-200: #e4d6c4;
+  --paper-300: #d6c4ad;
+  --paper-400: #b9a38a;
+
+  /* ---------- 墨色（Label Colors，暖褐而非纯黑） ----------
+     HIG 要求文字颜色表达层级：primary → secondary → tertiary → quaternary */
+  --ink-900: #2a2320;
+  --ink-800: #3a312c;
+  --ink-700: #4c423b;
+  --ink-600: #6b5d53;
+  --ink-500: #8a7c71;
+  --ink-400: #a99c91;
+  --ink-300: #c8bdb3;
+
+  /* ---------- 暗房（Dark Mode） ---------- */
+  --dark-900: #171310;
+  --dark-850: #1e1916;
+  --dark-800: #241e1a;
+  --dark-700: #2e2722;
+  --dark-600: #3b322c;
+
+  /* ---------- 主色：陶土橘红（显影液的红） ---------- */
+  --clay-300: #f0a184;
+  --clay-400: #e57a55;
+  --clay-500: #d4653f;
+  --clay-600: #b94f2c;
+  --clay-glow: rgba(212, 101, 63, 0.34);
+
+  /* ---------- 辅色 ---------- */
+  --moss-400: #7d8f6a;
+  --moss-500: #64774f;
+  --plum-400: #96708a;
+  --plum-500: #7d5c73;
+  --amber-400: #d9a441;
+  --amber-500: #bd8828;
+  --sky-400: #7d9aa8;
+
+  /* ---------- 主题色（三套任务池各自的心情） ---------- */
+  --theme: var(--clay-500);
+  --theme-soft: rgba(212, 101, 63, 0.14);
+  --theme-line: rgba(212, 101, 63, 0.34);
+  --theme-deep: var(--clay-600);
+  --theme-glow: var(--clay-glow);
+
+  /* ---------- 语义色（Semantic Colors） ---------- */
+  --bg: var(--paper-050);
+  /* 柔和的暖白。原来是 rgba(255,253,250) / #fffdfa —— 几乎纯白，
+     叠在同样偏亮的暖纸底上整片发曝。压掉一点亮度和冷调，保留纸的暖意。 */
+  --surface: rgba(250, 245, 237, 0.84);
+  --surface-solid: #f8f3ec;
+  --surface-sunken: rgba(228, 214, 196, 0.4);
+  /* 深色模式下的凹陷区不能用纯黑，否则空格子会变成一块死黑 */
+  --surface-sunken-dark: rgba(246, 239, 230, 0.07);
+  /* HIG：分隔线用 Separator，比边框更轻 */
+  --separator: rgba(58, 49, 44, 0.1);
+  --separator-opaque: rgba(58, 49, 44, 0.16);
+  --border: rgba(58, 49, 44, 0.11);
+  --border-strong: rgba(58, 49, 44, 0.2);
+  /* Label 层级：label → secondaryLabel → tertiaryLabel → quaternaryLabel */
+  --text: var(--ink-900);
+  --text-soft: var(--ink-600);
+  --text-mute: var(--ink-500);
+  --text-faint: var(--ink-400);
+
+  /* ---------- 阴影：Depth 由分层阴影表达 ----------
+     每一档都是「接触层 + 关键层 + 环境层」三段叠加。
+     阴影色统一为暖棕 rgb(74 55 38)，纯黑会在暖纸上显脏。 */
+  --shadow-xs: 0 1px 1px rgba(74, 55, 38, 0.05), 0 1px 3px rgba(74, 55, 38, 0.05);
+  --shadow-sm: 0 1px 2px rgba(74, 55, 38, 0.06), 0 4px 10px -4px rgba(74, 55, 38, 0.09);
+  --shadow-md: 0 1px 2px rgba(74, 55, 38, 0.06), 0 10px 24px -10px rgba(74, 55, 38, 0.16),
+    0 30px 50px -30px rgba(74, 55, 38, 0.2);
+  --shadow-lg: 0 2px 4px rgba(74, 55, 38, 0.06), 0 18px 40px -14px rgba(74, 55, 38, 0.2),
+    0 60px 90px -50px rgba(74, 55, 38, 0.32);
+  --shadow-xl: 0 4px 8px rgba(74, 55, 38, 0.07), 0 34px 70px -20px rgba(74, 55, 38, 0.28),
+    0 90px 130px -60px rgba(74, 55, 38, 0.4);
+  /* 相纸专用：接触层最锐最不透明，环境层最淡最大（Material umbra > penumbra > ambient） */
+  --shadow-print: 0 1px 1px rgba(53, 40, 28, 0.12), 0 6px 14px -4px rgba(53, 40, 28, 0.16),
+    0 26px 48px -18px rgba(53, 40, 28, 0.3);
+  --shadow-inset-hair: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  /* 图像描边：带色相的细线，避免近黑/近白在照片上读起来像脏边 */
+  --hairline-image: 0 0 0 1px rgba(74, 55, 38, 0.12);
+
+  /* ---------- 圆角（Apple 的连续曲率观感） ----------
+     HIG 常用档位：卡片 12–18，按钮用胶囊，弹层 20–28 */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-2xl: 32px;
+  --r-full: 999px;
+
+  /* ---------- 间距（8pt 网格） ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 22px;
+  --sp-6: 28px;
+  --sp-7: 36px;
+  --sp-8: 48px;
+  --sp-9: 64px;
+  --sp-10: 88px;
+
+  /* ---------- 字体 ----------
+     Latin 用系统 SF Pro（Apple 平台字体栈），中文用苹方；
+     宋体承担「正式、被记录」的标题语气，文楷承担手写感。 */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC", "Noto Sans SC",
+    "Microsoft YaHei UI", "Microsoft YaHei", system-ui, "Segoe UI", sans-serif;
+  --font-serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", "STSong", "SimSun", serif;
+  --font-hand: "Xingkai SC", "STXingkai", "LXGW WenKai", "Kaiti SC", "STKaiti", "KaiTi",
+    "Segoe Script", "Bradley Hand", cursive;
+  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  --font-num: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Optima",
+    "Palatino Linotype", "Georgia", var(--font-serif);
+
+  /* ---------- 字号（对应 HIG Typography 的 Large Title → Caption） ---------- */
+  --t-large-title: 34px;
+  --t-title1: 28px;
+  --t-title2: 22px;
+  --t-title3: 20px;
+  --t-headline: 17px;
+  --t-body: 15px;
+  --t-callout: 14px;
+  --t-subhead: 13px;
+  --t-footnote: 12px;
+  --t-caption: 11px;
+
+  /* ---------- 动效 ----------
+     HIG 的观感要点：反馈极快、进入顺滑、绝不拖沓。
+     只有「显影 / 抽卡 / 交卷」这三处属于叙事动效，允许超过 500ms。 */
+  --d-instant: 120ms;
+  --d-fast: 180ms;
+  --d-base: 260ms;
+  --d-slow: 380ms;
+  --d-slower: 560ms;
+  --d-cinematic: 1100ms;
+  --d-develop: 2400ms; /* 叙事动效：拍立得冲印，不计入界面动效预算 */
+
+  /* HIG 风格的缓动：到达用强 ease-out，离开更快更柔 */
+  --e-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --e-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --e-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --e-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --e-anticipate: cubic-bezier(0.6, -0.28, 0.735, 0.045);
+  --e-linear: linear;
+
+  --z-bg: 0;
+  --z-content: 10;
+  --z-sticky: 40;
+  --z-drawer: 80;
+  --z-modal: 120;
+  --z-toast: 200;
+  --z-grain: 300;
+
+  /* ---------- 入场编排 ----------
+     --stagger-step 是错峰步长，只在 CSS 里定义一次；
+      JS 只负责把序号写进 --i（详见 ui.js 的 stagger 注释）。
+      整套入场控制在 500ms 内完成，和 Apple 界面动效的手感一致。 */
+  --stagger-step: 46ms;
+  --rise-duration: 480ms;
+  --rise-shift: 18px;
+  --rise-blur: 5px;
+}
+
+/* ---------- 主题皮肤：三套任务池 ---------- */
+[data-theme="move"] {
+  --theme: #cf6438;
+  --theme-deep: #a94a24;
+  --theme-soft: rgba(207, 100, 56, 0.13);
+  --theme-line: rgba(207, 100, 56, 0.32);
+  --theme-glow: rgba(207, 100, 56, 0.34);
+  --aurora-1: rgba(240, 161, 132, 0.5);
+  --aurora-2: rgba(217, 164, 65, 0.32);
+}
+[data-theme="make"] {
+  --theme: #b0793c;
+  --theme-deep: #8d5c25;
+  --theme-soft: rgba(176, 121, 60, 0.13);
+  --theme-line: rgba(176, 121, 60, 0.32);
+  --theme-glow: rgba(176, 121, 60, 0.32);
+  --aurora-1: rgba(226, 184, 116, 0.5);
+  --aurora-2: rgba(150, 112, 138, 0.3);
+}
+[data-theme="link"] {
+  --theme: #7d6a8f;
+  --theme-deep: #60506f;
+  --theme-soft: rgba(125, 106, 143, 0.14);
+  --theme-line: rgba(125, 106, 143, 0.32);
+  --theme-glow: rgba(125, 106, 143, 0.32);
+  --aurora-1: rgba(178, 162, 196, 0.5);
+  --aurora-2: rgba(125, 154, 168, 0.34);
+}
+
+/* ---------- 暗房模式（对应 HIG Dark Mode） ----------
+   刻意不用纯白文字：暖纸白保留色相，避开深色界面常见的泛光。 */
+/* 「空间」（spatial）是一套独立的玻璃语言，但底色规则与暗房一致，
+   所以共用这一组令牌；材质、冷色与排版由 css/spatial.css 叠加。 */
+[data-mode="dark"],
+[data-mode="spatial"] {
+  --bg: var(--dark-900);
+  --surface: rgba(36, 30, 26, 0.74);
+  --surface-solid: #241e1a;
+  --surface-sunken: var(--surface-sunken-dark);
+  --separator: rgba(246, 239, 230, 0.1);
+  --separator-opaque: rgba(246, 239, 230, 0.16);
+  --border: rgba(246, 239, 230, 0.1);
+  --border-strong: rgba(246, 239, 230, 0.18);
+  --text: #f2e9dd;
+  --text-soft: #cec1b3;
+  --text-mute: #a89b8e;
+  --text-faint: #837568;
+  --paper-000: #241e1a;
+  --paper-050: #2a2320;
+  --paper-100: #322a25;
+  /* 深色表面上阴影需要更强的 alpha 才看得见 */
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 30px -12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.45), 0 24px 60px -18px rgba(0, 0, 0, 0.72);
+  --shadow-xl: 0 4px 10px rgba(0, 0, 0, 0.5), 0 40px 90px -24px rgba(0, 0, 0, 0.82);
+  --shadow-print: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 40px -16px rgba(0, 0, 0, 0.8);
+  --shadow-inset-hair: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --hairline-image: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- 无障碍：尊重系统的「减弱动态效果」 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* 应用内的「减少动态效果」开关（设置页） */
+[data-reduce-motion="on"] *,
+[data-reduce-motion="on"] *::before,
+[data-reduce-motion="on"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* ---------- 截图 / 自检模式（?noanim=1）----------
+   用隐藏窗口自动截图时，Chromium 会节流合成器线程，
+   带 delay 的入场动画会永远停在第一帧（opacity: 0）。
+   这个模式把所有动画直接跳到终态，让截图反映真实布局。 */
+[data-noanim="on"] *,
+[data-noanim="on"] *::before,
+[data-noanim="on"] *::after {
+  animation-delay: 0ms !important;
+  animation-duration: 1ms !important;
+  animation-fill-mode: both !important;
+  transition-duration: 1ms !important;
+}

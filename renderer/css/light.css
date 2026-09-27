@@ -1,0 +1,209 @@
+/* ============================================================
+   此间 · 凝光光效样式（Light）
+
+   四层光影按固定顺序叠加，全部挂在 .has-light 表面内部：
+     1. ::before  顶部锋利高光（rim light）
+     2. ::after   底部柔性反射光 + 底部柔和阴影
+     3..4 .light-glow / .light-ripple  跟手弥散光与点按涟漪
+        （这两个是真实子元素，因为伪元素已经被占用）
+
+   两条硬约束：
+   · 高光用「颜色提亮」而不是叠白 —— 叠白会让暗色模式发灰
+   · 弥散光只在当前表面内部，不越界
+   ============================================================ */
+
+/* 主题色的 RGB 分量，由 light.js 写入，供 color-mix / rgb() 使用 */
+:root {
+  --light-theme: 212 101 63;
+  --light-glow: 232 122 82;
+  --mx: 50%;
+  --my: 50%;
+  --mxn: 0;
+  --myn: 0;
+}
+
+/* ---------- 表面：先建立裁剪与层叠上下文 ---------- */
+.has-light {
+  position: relative;
+  isolation: isolate;
+  /* 让内部的光晕被圆角裁掉，光不会溢出到隔壁元素 */
+  overflow: hidden;
+  --lx: 50%;
+  --ly: 50%;
+  --lhot: 0;
+}
+
+/* ============================================================
+   第 1 层：顶部锋利高光
+   用颜色提亮：把主题色按极低比例混进纸色，形成一条「被光照到的边」
+   ============================================================ */
+.has-light::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  /* 顶部一条「被光照到的边」：0.5px 处最亮，20% 处完全消失 */
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, rgb(var(--light-glow)) 30%, transparent) 0%,
+    color-mix(in srgb, rgb(var(--light-glow)) 9%, transparent) 4%,
+    transparent 20%
+  );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, rgb(var(--light-glow)) 40%, transparent);
+}
+
+/* ============================================================
+   第 2 层 + 第 4 层：底部柔性反射光 + 底部柔和阴影
+   反射光是「从下方漫上来的暖色」，阴影是「材质与背景之间的厚度」
+   ============================================================ */
+.has-light::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  /* 底部柔性反射光：从下沿漫上来的暖色 */
+  background: linear-gradient(
+    0deg,
+    color-mix(in srgb, rgb(var(--light-glow)) 9%, transparent) 0%,
+    transparent 26%
+  );
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, rgb(var(--light-glow)) 14%, transparent);
+}
+
+/* ============================================================
+   第 3 层：跟手弥散光
+
+   一条硬约束：**不能影响可读性。**
+
+   所以这里做了三件事，而不只是把数值调小：
+   1. **光晕只压在内容之下**（`z-index: 0`，而内容被抬到 `z-index: 2`），
+      所以它是「背景被照亮」，不是「一层光蒙在文字上」。
+      加上 `isolation: isolate`，提亮不会溢出到别的元素。
+   2. **混合模式从 plus-lighter 换成 soft-light**：
+      plus-lighter 是加光，在暗底上会把浅色文字直接冲到接近白；
+      soft-light 保留亮度关系、不会把文字压平，
+      同时仍然能读出「这里被照亮了」。
+   3. **强度上限降到 0.55**，且暗色模式下不再放大比例
+      （近黑底上大面积加光最容易糊掉文字）。
+   ============================================================ */
+.light-glow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  /* 必须是 no-drag —— 少这一条，整个侧栏导航用真实鼠标就点不动。
+     light.js 会往每个带 data-light 的表面里插一个 .light-glow，标题栏也在其列，
+     而标题栏整条是 -webkit-app-region: drag。Chromium 算拖拽区域时会把后代一并
+     算进去，光斑又是个 620×620 的圆、初始位置在 (-310,-310)，于是拖拽区从
+     "顶部 46px 的一条"膨胀成"左上角 310×310 的一大块"，正好盖住导航。
+     注意：sendInputEvent 注入的事件绕过这一层判定，自动化点击测试测不出来，
+     只有真实鼠标会中招 —— 这就是它一直查不到的原因。 */
+  -webkit-app-region: no-drag;
+  /* 关键：压在内容之下 */
+  z-index: 0;
+  opacity: calc(var(--lhot, 0) * 1);
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, rgb(var(--light-glow)) 64%, transparent) 0%,
+    color-mix(in srgb, rgb(var(--light-glow)) 29%, transparent) 48%,
+    transparent 100%
+  );
+  mix-blend-mode: soft-light;
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+  transition: opacity 220ms var(--e-out);
+}
+/* soft-light 不可用时退回普通叠加（不加光，绝不会冲淡文字） */
+@supports not (mix-blend-mode: soft-light) {
+  .light-glow {
+    mix-blend-mode: normal;
+    opacity: calc(var(--lhot, 0) * 0.22);
+  }
+}
+
+/* 内容抬到光晕之上。这样无论混合模式怎么变，文字都压在光上面。 */
+.has-light > :not(.light-glow):not(.light-ripple):not(.glass-frost):not(.glass-refract) {
+  position: relative;
+  z-index: 2;
+}
+
+/* 暗色模式：不能靠叠白，改用颜色提亮 —— 但**不要放大比例**。
+   近黑底上大面积加光最容易把浅色文字糊掉，
+   所以这里保持和浅色模式同一档强度，只换色相。 */
+[data-mode="dark"] .light-glow {
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, rgb(var(--light-glow)) 30%, transparent) 0%,
+    color-mix(in srgb, rgb(var(--light-glow)) 12%, transparent) 48%,
+    transparent 100%
+  );
+}
+[data-mode="dark"] .has-light::before {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, rgb(var(--light-glow)) 62%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, rgb(var(--light-glow)) 20%, transparent) 0%,
+    transparent 20%
+  );
+}
+
+/* ============================================================
+   指引光：点按涟漪
+   从按下的那一点向外荡开，提醒「这一次操作被收到了」
+   ============================================================ */
+.light-ripple {
+  position: absolute;
+  left: var(--rx, 50%);
+  top: var(--ry, 50%);
+  transform: translate(-50%, -50%) scale(0.1);
+  border-radius: 50%;
+  pointer-events: none;
+  /* 同上：涟漪也是 JS 插进表面的，不能被并进标题栏的拖拽区 */
+  -webkit-app-region: no-drag;
+  z-index: 3;
+  background: radial-gradient(
+    circle at center,
+    color-mix(in srgb, rgb(var(--light-glow)) 42%, transparent) 0%,
+    color-mix(in srgb, rgb(var(--light-glow)) 18%, transparent) 38%,
+    transparent 66%
+  );
+  animation: light-ripple-out 760ms var(--e-out) forwards;
+}
+@keyframes light-ripple-out {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* 「减少动态效果」时不跟手，但保留一层很淡的静态光影 */
+[data-reduce-motion="on"] .light-glow {
+  opacity: 0.2;
+  transition: none;
+}
+[data-reduce-motion="on"] .light-ripple {
+  display: none;
+}
+
+/* 不支持 color-mix 时退回一层极淡的白，保证仍有光影层次 */
+@supports not (background: color-mix(in srgb, red 10%, transparent)) {
+  .has-light::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, transparent 20%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .has-light::after {
+    background: linear-gradient(0deg, rgba(255, 255, 255, 0.16) 0%, transparent 30%);
+  }
+  .light-glow {
+    background: radial-gradient(closest-side, rgba(255, 255, 255, 0.22) 0%, transparent 100%);
+  }
+}

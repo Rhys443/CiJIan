@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="move" data-mode="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'none'"
+    />
+    <title>此间 · 15天唤醒计划</title>
+    <link rel="stylesheet" href="css/tokens.css" />
+    <link rel="stylesheet" href="css/light.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/polaroid.css" />
+    <link rel="stylesheet" href="css/home.css" />
+    <link rel="stylesheet" href="css/draw.css" />
+    <link rel="stylesheet" href="css/checkin.css" />
+    <link rel="stylesheet" href="css/ring.css" />
+    <link rel="stylesheet" href="css/review.css" />
+    <link rel="stylesheet" href="css/surfaces.css" />
+    <link rel="stylesheet" href="css/spatial.css" />
+    <link rel="stylesheet" href="css/glass.css" />
+  </head>
+  <body class="framed">
+    <!-- 环境氛围层挂在 body 上：窗口是透明的，圆角与阴影需要它铺满整个视口 -->
+    <div class="ambient" aria-hidden="true">
+      <!-- WebGL2 光学层：极光与所有玻璃面板在同一个着色器里一次画完。
+           WebGL2 不可用时这块画布保持空白，下面的 CSS 极光照常工作。 -->
+      <canvas class="optics-canvas" id="optics"></canvas>
+      <div class="aurora aurora--1"></div>
+      <div class="aurora aurora--2"></div>
+      <div class="aurora aurora--3"></div>
+      <div class="aurora aurora--4"></div>
+      <div class="paper-grain"></div>
+      <div class="film-grain"></div>
+      <div class="vignette"></div>
+    </div>
+
+    <div class="app">
+      <!-- ============ 自绘标题栏（无边框窗口） ============ -->
+      <header class="titlebar hairline-h">
+        <!-- 标题栏只保留右侧窗口按钮，左侧文字全部去掉：
+             品牌名已经在左侧栏顶部出现过一次，标题栏再来一遍是重复，
+             副标题（「定格此刻瞬间 · 15天唤醒计划 · 桌面概念 Demo」）
+             更是纯装饰。留一条干净的拖拽条更稳。 -->
+        <div class="titlebar__spacer"></div>
+        <div class="titlebar__controls">
+          <button class="winbtn" id="win-min" title="最小化" aria-label="最小化">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4">
+              <path d="M2 6h8" />
+            </svg>
+          </button>
+          <button class="winbtn" id="win-max" title="最大化" aria-label="最大化">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4">
+              <rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.4" />
+            </svg>
+          </button>
+          <button class="winbtn winbtn--close" id="win-close" title="关闭" aria-label="关闭">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4">
+              <path d="M3 3l6 6M9 3l-6 6" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="shell">
+        <!-- ============ 左侧导航（液态玻璃边栏） ============ -->
+        <aside class="rail rail-edge" data-light data-glass="sidebar">
+          <div class="rail__logo">
+            <b>此间</b>
+            <span>CIJIAN</span>
+          </div>
+          <div class="rail__caption">把「做一件事」变成「收藏一个瞬间」</div>
+
+          <nav class="nav" id="nav"></nav>
+
+          <div class="rail__spacer"></div>
+
+          <div class="rail-card" id="rail-card"></div>
+
+          <div class="rail__foot">
+            <span class="dot-live"></span>
+            <span>数据全部保存在本机</span>
+          </div>
+        </aside>
+
+        <!-- ============ 内容区 ============ -->
+        <main class="stage" id="stage">
+          <div class="view" id="view"></div>
+        </main>
+      </div>
+    </div>
+
+    <div class="toasts" id="toasts"></div>
+
+        <!-- ============ 脚本（按依赖顺序，全部为经典脚本，file:// 下可直接运行） ============ -->
+    <script src="js/data.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/optics.js"></script>
+    <script src="js/ambient.js"></script>
+    <script src="js/light.js"></script>
+    <script src="js/glass.js"></script>
+    <script src="js/photo.js"></script>
+    <script src="js/polaroid.js"></script>
+    <script src="js/ring.js"></script>
+    <script src="js/views/home.js"></script>
+    <script src="js/views/draw.js"></script>
+    <script src="js/views/checkin.js"></script>
+    <script src="js/views/review.js"></script>
+    <script src="js/views/settings.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

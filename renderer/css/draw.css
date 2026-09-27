@@ -1,0 +1,364 @@
+/* ============================================================
+   此间 · 抽卡页：牌堆 / 洗牌 / 3D 翻卡 / 揭晓
+   ============================================================ */
+
+.draw-stage {
+  position: relative;
+  max-width: 1080px;
+  margin: 0 auto;
+  min-height: 620px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-7);
+  padding-bottom: var(--sp-6);
+}
+
+/* 牌桌的暖光池 */
+.draw-stage::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 720px;
+  height: 420px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse, var(--theme-glow), transparent 66%);
+  filter: blur(30px);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.deck-zone {
+  position: relative;
+  height: 400px;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  perspective: 1700px;
+  perspective-origin: 50% 46%;
+}
+
+.deck {
+  position: relative;
+  width: 264px;
+  height: 368px;
+  transform-style: preserve-3d;
+  transition: transform 700ms var(--e-out);
+}
+.deck.is-dealing {
+  transform: translateY(6px) scale(0.97);
+}
+
+/* 牌背堆叠的厚度（用多层伪元素做出"一叠"的实体感） */
+.deck__stack {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: linear-gradient(158deg, #3b322c, #241e1a);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 20px 40px -22px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.deck__stack::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 236, 214, 0.14);
+  background-image: radial-gradient(rgba(255, 236, 214, 0.16) 1px, transparent 1px),
+    radial-gradient(rgba(255, 236, 214, 0.1) 1px, transparent 1px);
+  background-size: 16px 16px, 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
+/* ---------- 单张牌 ---------- */
+.tcard {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 264px;
+  height: 368px;
+  margin: -184px 0 0 -132px;
+  border-radius: 16px;
+  transform-style: preserve-3d;
+  transform: translate3d(var(--x, 0), var(--y, 0), var(--z, 0)) rotate(var(--rot, 0deg))
+    rotateY(var(--ry, 0deg)) scale(var(--sc, 1));
+  transition: transform 780ms cubic-bezier(0.16, 1, 0.3, 1), filter 420ms var(--e-out),
+    opacity 420ms var(--e-out);
+  will-change: transform;
+  cursor: pointer;
+}
+.tcard__inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 1050ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tcard.is-revealed .tcard__inner {
+  transform: rotateY(180deg);
+}
+.tcard__face {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+
+/* 牌背 */
+.tcard__face--back {
+  background: linear-gradient(158deg, #453a33 0%, #2b241f 52%, #1d1815 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-lg);
+  display: grid;
+  place-items: center;
+}
+.tcard__face--back::after {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 238, 218, 0.16);
+  background-image: radial-gradient(rgba(255, 238, 218, 0.2) 1.2px, transparent 1.2px),
+    radial-gradient(rgba(255, 238, 218, 0.11) 1.2px, transparent 1.2px);
+  background-size: 18px 18px, 18px 18px;
+  background-position: 0 0, 9px 9px;
+}
+.tcard__emblem {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  color: rgba(255, 240, 224, 0.72);
+}
+.tcard__emblem svg {
+  width: 30px;
+  height: 30px;
+  opacity: 0.85;
+}
+.tcard__emblem span {
+  font-family: var(--font-serif);
+  font-size: 12.5px;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  opacity: 0.68;
+}
+
+/* 牌面（正面） */
+.tcard__face--front {
+  transform: rotateY(180deg);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(165deg, #fffdf8 0%, #fbf5ea 46%, #f3e9d9 100%);
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(42, 35, 32, 0.06);
+}
+.tcard__kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #8a7d72;
+}
+.tcard__stars {
+  color: var(--theme);
+  letter-spacing: 0.1em;
+}
+.tcard__rule {
+  height: 1px;
+  margin: 14px 0;
+  background: linear-gradient(to right, rgba(140, 118, 96, 0.4), rgba(140, 118, 96, 0.03));
+}
+.tcard__title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #2c2622;
+  letter-spacing: 0.01em;
+}
+.tcard__guide {
+  margin-top: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #6f645b;
+}
+.tcard__guide b {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: #9c8e82;
+  font-weight: 500;
+}
+.tcard__corner {
+  position: absolute;
+  right: 16px;
+  top: 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #b3a597;
+  letter-spacing: 0.1em;
+}
+.tcard--hot {
+  --sc: 1.04;
+  --y: -14px;
+  filter: drop-shadow(0 26px 34px rgba(42, 30, 20, 0.28));
+}
+.tcard.is-picked {
+  --sc: 1.1;
+  --y: -26px;
+  z-index: 30;
+}
+.tcard.is-dimmed {
+  opacity: 0.3;
+  filter: blur(2px) saturate(0.6);
+}
+.tcard.is-dealt {
+  animation: deal-in 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--deal-delay, 0ms);
+}
+@keyframes deal-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -180px, -120px) rotate(-10deg) scale(0.86);
+  }
+}
+.tcard.is-scattering {
+  animation: scatter 460ms var(--e-in-out) both;
+  animation-delay: var(--deal-delay, 0ms);
+}
+@keyframes scatter {
+  0% {
+    transform: translate3d(var(--x), var(--y), 0) rotate(var(--rot)) scale(1);
+    filter: blur(0);
+  }
+  45% {
+    transform: translate3d(calc(var(--x) * 2.1), calc(var(--y) - 34px), 60px) rotate(calc(var(--rot) * 3.4))
+      scale(0.72);
+    filter: blur(11px);
+  }
+  100% {
+    transform: translate3d(var(--x), var(--y), 0) rotate(var(--rot)) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* ---------- 抽卡提示与按钮 ---------- */
+.deck-hint {
+  position: relative;
+  z-index: 5;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  color: var(--text-mute);
+  transition: opacity var(--d-base) var(--e-out);
+}
+.deck-hint.hide {
+  opacity: 0;
+}
+.draw-actions {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---------- 抽到之后的"任务披露"面板 ---------- */
+.reveal {
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: center;
+  animation: reveal-in 900ms var(--e-settle) both;
+}
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+.reveal__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-radius: var(--r-full);
+  background: var(--theme-soft);
+  border: 1px solid var(--theme-line);
+  color: var(--theme-deep);
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+}
+[data-mode="dark"] .reveal__kicker {
+  color: var(--theme);
+}
+.reveal__title {
+  margin: var(--sp-5) 0 var(--sp-4);
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.reveal__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-4);
+  margin: var(--sp-6) 0;
+  text-align: left;
+}
+.reveal__block {
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  background: var(--surface-solid);
+}
+.reveal__block b {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  color: var(--text-faint);
+  font-weight: 500;
+}
+.reveal__block p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-soft);
+  line-height: 1.7;
+}
+.reveal__foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-6);
+  flex-wrap: wrap;
+}
+.reveal__note {
+  margin-top: var(--sp-4);
+  font-size: 11.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.06em;
+}
+
+/* 换卡确认的小弹层 */
+.swap-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}

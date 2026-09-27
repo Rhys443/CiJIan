@@ -1,0 +1,351 @@
+/* ============================================================
+   此间 · 拍立得相纸：结构 / 冲印显影 / 翻面 / 颗粒 / 手写体
+   ============================================================ */
+
+.polaroid {
+  --p-w: 260px;
+  --p-pad: 14px;
+  --p-foot: 58px;
+  width: var(--p-w);
+  position: relative;
+  perspective: 1600px;
+  user-select: none;
+  outline: none;
+}
+.polaroid--sm {
+  --p-w: 168px;
+  --p-pad: 9px;
+  --p-foot: 38px;
+}
+.polaroid--md {
+  --p-w: 268px;
+  --p-pad: 15px;
+  --p-foot: 62px;
+}
+.polaroid--lg {
+  --p-w: 372px;
+  --p-pad: 21px;
+  --p-foot: 84px;
+}
+
+.polaroid__inner {
+  position: relative;
+  width: 100%;
+  padding-top: calc(100% + var(--p-pad) * 2 + var(--p-foot));
+  transform-style: preserve-3d;
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.polaroid.is-flipped .polaroid__inner {
+  transform: rotateY(180deg);
+}
+.polaroid.is-flippable {
+  cursor: pointer;
+}
+.polaroid.is-flippable:hover .polaroid__inner {
+  transform: translateY(-4px) rotateX(2.2deg) rotateY(-2.4deg) scale(1.012);
+  transition-duration: 520ms;
+}
+.polaroid.is-flippable.is-flipped:hover .polaroid__inner {
+  transform: rotateY(180deg) translateY(-4px) rotateX(2.2deg) rotateY(-2.4deg) scale(1.012);
+}
+.polaroid.is-flippable:active .polaroid__inner {
+  transform: scale(0.985);
+}
+
+.polaroid__face {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+
+/* ---------- 正面：白纸相框 ---------- */
+.polaroid__face--front {
+  display: flex;
+  flex-direction: column;
+  padding: var(--p-pad) var(--p-pad) 0;
+  background: linear-gradient(168deg, #fffefb 0%, #fdf9f2 42%, #f7f0e4 100%);
+  box-shadow: var(--shadow-print), inset 0 0 0 1px rgba(42, 35, 32, 0.05);
+}
+[data-mode="dark"] .polaroid__face--front {
+  background: linear-gradient(168deg, #f6efe4 0%, #ece2d3 100%);
+}
+
+.polaroid__frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: #26201c;
+  box-shadow: inset 0 0 0 1px rgba(42, 35, 32, 0.16), inset 0 2px 10px rgba(42, 35, 32, 0.22);
+}
+.polaroid__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  will-change: filter, transform;
+}
+
+/* 冲印时的显影液扫光 */
+.polaroid__develop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.95) 0%,
+    rgba(255, 244, 226, 0.72) 38%,
+    rgba(240, 214, 176, 0.5) 62%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  mix-blend-mode: screen;
+}
+.polaroid__develop.is-running {
+  animation: develop-pass 2400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes develop-pass {
+  0% {
+    opacity: 1;
+    transform: translateY(-100%);
+  }
+  55% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+
+/* 相纸上的颗粒与暗角（真实拍立得的物理质感） */
+.polaroid__grain {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23p)'/%3E%3C/svg%3E");
+}
+
+/* 斜向高光，让相纸有塑料膜的反光感 */
+.polaroid__sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    118deg,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(255, 255, 255, 0.06) 26%,
+    rgba(255, 255, 255, 0) 46%,
+    rgba(255, 255, 255, 0.12) 78%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(var(--sheen-x, 0));
+  transition: transform 700ms var(--e-out);
+}
+.polaroid.is-flippable:hover .polaroid__sheen {
+  --sheen-x: 14px;
+}
+
+.polaroid__stamp {
+  position: absolute;
+  left: 8px;
+  bottom: 7px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: rgba(24, 18, 14, 0.42);
+  backdrop-filter: blur(3px);
+  color: rgba(255, 246, 234, 0.94);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  opacity: 0.9;
+}
+
+.polaroid__foot {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+}
+.polaroid__date {
+  font-size: 15px;
+  color: #4a423c;
+  letter-spacing: 0.04em;
+  transform: rotate(-1.2deg);
+  white-space: nowrap;
+}
+.polaroid--sm .polaroid__date {
+  font-size: 11.5px;
+}
+.polaroid--lg .polaroid__date {
+  font-size: 19px;
+}
+.polaroid__task {
+  font-size: 10.5px;
+  color: #8b8078;
+  text-align: right;
+  line-height: 1.35;
+  max-width: 62%;
+}
+.polaroid--sm .polaroid__task {
+  display: none;
+}
+[data-mode="dark"] .polaroid__date {
+  color: #3c352f;
+}
+[data-mode="dark"] .polaroid__task {
+  color: #7d726a;
+}
+
+/* ---------- 背面：手写感想 ---------- */
+.polaroid__face--back {
+  transform: rotateY(180deg);
+  background: linear-gradient(170deg, #fffdf7 0%, #fbf5ea 46%, #f4ebdb 100%);
+  box-shadow: var(--shadow-print), inset 0 0 0 1px rgba(42, 35, 32, 0.05);
+}
+[data-mode="dark"] .polaroid__face--back {
+  background: linear-gradient(170deg, #f4ecdf 0%, #e9dfcd 100%);
+}
+/* 背面淡淡的横格纸线 */
+.polaroid__face--back::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 25px,
+    rgba(140, 118, 96, 0.14) 25px,
+    rgba(140, 118, 96, 0.14) 26px
+  );
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.polaroid__back-inner {
+  position: absolute;
+  inset: var(--p-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.polaroid__back-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: #8b7f74;
+}
+.polaroid__back-day {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.polaroid__rule {
+  height: 1px;
+  background: linear-gradient(to right, rgba(140, 118, 96, 0.42), rgba(140, 118, 96, 0.05));
+}
+.polaroid__writing {
+  flex: 1;
+  margin: 4px 0 0;
+  font-size: 15.5px;
+  line-height: 1.62;
+  color: #33302c;
+  overflow: hidden;
+  letter-spacing: 0.02em;
+}
+.polaroid--sm .polaroid__writing {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.polaroid--lg .polaroid__writing {
+  font-size: 18px;
+  line-height: 1.7;
+}
+.polaroid__writing--empty {
+  color: #a9a096;
+  font-style: normal;
+}
+.polaroid__back-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: #8b7f74;
+}
+.polaroid__emo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--emo, #8b7f74);
+  letter-spacing: 0.06em;
+}
+.polaroid__meta {
+  letter-spacing: 0.04em;
+}
+
+/* 单独使用的背面（放大查看） */
+.polaroid__face--solo {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  min-height: 320px;
+  transform: none;
+  border-radius: 4px;
+}
+.polaroid__face--solo .polaroid__back-inner {
+  position: relative;
+  inset: auto;
+  padding: 24px;
+  min-height: 320px;
+}
+
+/* ---------- 空白相纸 ---------- */
+.polaroid--blank {
+  cursor: default;
+}
+.polaroid__frame--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: repeating-linear-gradient(
+      45deg,
+      rgba(180, 162, 140, 0.09) 0px,
+      rgba(180, 162, 140, 0.09) 3px,
+      transparent 3px,
+      transparent 9px
+    ),
+    linear-gradient(160deg, #f4ece0, #eae0d1);
+  box-shadow: inset 0 0 0 1px rgba(42, 35, 32, 0.08);
+}
+.polaroid__empty-glyph {
+  font-size: 26px;
+  opacity: 0.34;
+  filter: grayscale(0.6);
+}
+.polaroid--sm .polaroid__empty-glyph {
+  font-size: 18px;
+}
+.polaroid__empty-hint {
+  font-family: var(--font-serif);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  color: #a1968a;
+}
+.polaroid--sm .polaroid__empty-hint {
+  font-size: 9.5px;
+}
+
+/* ---------- 相纸悬停时的"被拿起"手感 ---------- */
+.polaroid--lift:hover {
+  z-index: 5;
+}

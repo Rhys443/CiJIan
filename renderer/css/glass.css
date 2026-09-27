@@ -1,0 +1,372 @@
+/* ============================================================
+   此间 · 液态玻璃样式
+
+   分层顺序（从下往上）：
+     .glass-frost    毛玻璃：blur + saturate
+     .glass-refract  折射：backdrop-filter: url(#id)，只在边缘一圈产生位移
+     .glass-inner    内容：文字与控件都在这一层，压在光效之上
+     ::before/::after 四层光影：顶部镜面高光 + 底部柔性反射
+
+   两条硬约束：
+   1. 折射层必须能透出背景 —— 板面自身不能是不透明填充。
+   2. **可读性优先**：折射强度只作用在边缘，文字区域不位移；
+      所有光影都是极低强度，且内容始终在光效之上。
+   ============================================================ */
+
+.is-glass {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  /* 玻璃需要一定透光率，否则折射看不见 */
+  background-color: rgba(255, 255, 255, 0.06);
+  --glass-radius: 24px;
+  border-radius: var(--glass-radius);
+}
+
+/* ---------- 毛玻璃层 ---------- */
+.glass-frost,
+.glass-refract {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+.glass-frost {
+  /* 具体值由 JS 依参数写入，这里给兜底 */
+  backdrop-filter: blur(12px) saturate(1.25);
+  -webkit-backdrop-filter: blur(12px) saturate(1.25);
+}
+.glass-refract {
+  /* 折射层：url(#id) 由 JS 写入 */
+  opacity: 0;
+  transition: opacity 260ms var(--e-out);
+}
+[data-glass-mode="refraction"] .glass-refract {
+  opacity: 1;
+}
+
+/* ---------- 内容层 ----------
+   文字与控件都在这一层，永远压在光效之上。 */
+.glass-inner {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+}
+
+/* ============================================================
+   四层光影（强度刻意压得很低）
+   顺序：顶部锋利高光 → 底部柔性反射光 → 颜色微投影 → 底部柔阴影
+   ============================================================ */
+
+/* 顶部锋利高光：1px 内的镜面线 */
+.is-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(255, 255, 255, 0.03) 6%,
+    transparent 24%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+/* 底部柔性反射光 + 材质与背景之间的柔阴影 */
+.is-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(0deg, rgba(255, 255, 255, 0.06) 0%, transparent 30%);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+/* ---------- 暖纸 / 暗房模式下的玻璃参数 ----------
+   浅色底上玻璃要更亮一点才读得出「一层材质」；
+   暗色底上则要更克制，避免把文字托得太亮。 */
+[data-mode="light"] .is-glass {
+  background-color: rgba(255, 253, 250, 0.32);
+}
+[data-mode="light"] .is-glass::before {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+[data-mode="light"] .is-glass::after {
+  box-shadow:
+    inset 0 -1px 0 rgba(74, 55, 38, 0.06),
+    inset 0 0 0 1px rgba(74, 55, 38, 0.06);
+}
+
+[data-mode="dark"] .is-glass,
+[data-mode="spatial"] .is-glass {
+  background-color: rgba(255, 255, 255, 0.045);
+}
+[data-mode="spatial"] .is-glass::before {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+[data-mode="spatial"] .is-glass::after {
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 不支持折射时（非 Chromium 或探测失败）----------
+   退化成纯毛玻璃，并把边框画清楚一点，保证层次还在。 */
+[data-glass-mode="blur-only"] .glass-frost {
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+}
+[data-glass-mode="blur-only"].is-glass {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ---------- 减少动态效果 ----------
+   折射是静态的（不跟手、不动画），所以不需要关掉；
+   只把折射层的淡入去掉。 */
+[data-reduce-motion="on"] .glass-refract {
+  transition: none;
+}
+
+/* ============================================================
+   WebGL2 光学层接管（js/optics.js）
+
+   这一层把极光和所有玻璃面板放进同一个片元着色器，一次全屏画完。
+   于是 backdrop-filter 整个可以去掉——它是原方案里最贵的一环，
+   而折射、磨砂、染色、高光现在都由着色器按光学模型给出，
+   比 CSS 的渐变叠加更准，也更快。
+
+   这里的规则只有一个目的：把 CSS 那边的近似实现让位，
+   不要和着色器的结果叠在一起（叠了就会过曝、发白）。
+   ============================================================ */
+
+.optics-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* CSS 极光与折射层让位 —— 位置、颜色、尺寸仍然由它们定义，
+   光学层会去读这些计算值，只是不再由浏览器自己绘制。
+
+   注意用 visibility 而不是 display:none：display:none 的元素不生成盒子，
+   getComputedStyle 拿到的尺寸不再可靠，光学层就量不到光斑的大小和位置了。
+   （这个坑踩过一次，现象是光斑半径全部退回默认值。） */
+[data-optics="webgl"] .aurora,
+[data-optics="webgl"] .glass-refract {
+  visibility: hidden;
+}
+
+[data-optics="webgl"] .glass-frost,
+[data-optics="webgl"] .glass-refract,
+[data-optics="webgl"] .is-glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 真正的性能开关在这里。
+   .card / .rail / .titlebar 以及空间模式下的几块面板，本来就各自写了
+   backdrop-filter。光学层接管之后，这些模糊会与着色器里的折射**同时**跑，
+   等于同一块玻璃算两遍：既费，也会把折射糊掉。
+   所以除了侧栏与标题栏那两条静态的「模糊分割带」（.rail-edge::after /
+   .titlebar.hairline-h::after，属于 Apple 的 scroll edge effect，很便宜），
+   其余全部关掉。
+
+   这里用 !important 是有意的：这是一层覆盖规则，只要以后有人把新的样式表
+   接在 glass.css 后面，靠层叠顺序的写法就会静默失效，而失效的表现是
+   「帧率掉了但画面看着没问题」—— 最难查的一类回归。 */
+[data-optics="webgl"] .card,
+[data-optics="webgl"] .panel,
+[data-optics="webgl"] .hero,
+[data-optics="webgl"] .review-hero,
+[data-optics="webgl"] .stat,
+[data-optics="webgl"] .summary,
+[data-optics="webgl"] .trace,
+[data-optics="webgl"] .ring-block,
+[data-optics="webgl"] .rail-card,
+[data-optics="webgl"] .print-stage,
+[data-optics="webgl"] .write-block,
+[data-optics="webgl"] .shot-picker,
+[data-optics="webgl"] .modal,
+[data-optics="webgl"] .scrim,
+[data-optics="webgl"] .toast,
+[data-optics="webgl"] .btn,
+[data-optics="webgl"] .polaroid__stamp,
+[data-optics="webgl"] .rail,
+[data-optics="webgl"] .titlebar {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 板面自己不再需要厚底色：透过率、染色、边缘压暗都在着色器里 */
+[data-optics="webgl"] .is-glass {
+  background-color: rgba(255, 255, 255, 0.012);
+}
+[data-optics="webgl"][data-mode="light"] .is-glass {
+  background-color: rgba(255, 253, 250, 0.05);
+}
+
+/* 关键之二：板面自己要让出透光率。
+   .card / .panel 默认用 --surface（0.86 alpha 的相纸白）当底色，
+   几乎不透光 —— 折射画得再准也会被这层盖住，等于白做。
+   这里按同一比例把每块表面调薄，颜色关系仍然由各自的令牌决定，
+   所以三套外观不需要分别写死颜色。 */
+[data-optics="webgl"] .card,
+[data-optics="webgl"] .panel,
+[data-optics="webgl"] .hero,
+[data-optics="webgl"] .review-hero,
+[data-optics="webgl"] .stat,
+[data-optics="webgl"] .summary,
+[data-optics="webgl"] .trace,
+[data-optics="webgl"] .ring-block,
+[data-optics="webgl"] .rail-card,
+[data-optics="webgl"] .print-stage,
+[data-optics="webgl"] .write-block {
+  background-color: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+/* 侧栏按 HIG 是 regular 变体，本来就比卡片更实一点，所以留得厚一些 */
+[data-optics="webgl"] .rail {
+  background-color: color-mix(in srgb, var(--surface) 80%, transparent);
+  /* 顶栏取消之后侧栏直接顶到窗口上沿，--sp-5 显得太高、整块文字贴着上边缘。
+     退回 --sp-6，让它在圆角里落下来一点。 */
+  padding-top: var(--sp-6);
+}
+
+/* ============================================================
+   不要顶栏。
+   整个界面只分左右两块：左边工具栏 + 右边内容区。
+   左边工具栏直接顶到窗口上沿；三个窗口按钮独立浮在右上角。
+
+   做法：把标题栏从网格流里拿出来绝对定位。它不再占任何布局高度，
+   也不画任何背景，只留一条透明的拖拽区（窗口总得有个地方能拖），
+   按钮挂在它里面。于是 .app 的网格只剩一行，侧栏自然长到窗口顶部。
+   ============================================================ */
+[data-optics="webgl"] .app {
+  grid-template-rows: 1fr;
+}
+
+[data-optics="webgl"] .titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46px;
+  z-index: 40;
+  /* 完全不画东西：没有底色、没有渐变、没有分割线、没有阴影 */
+  background: none;
+  background-image: none;
+  border-bottom: none;
+  box-shadow: none;
+  /* 只剩按钮，直接靠右 */
+  justify-content: flex-end;
+}
+
+/* 顶栏左侧原本那个占位元素一并去掉 */
+[data-optics="webgl"] .titlebar__spacer {
+  display: none;
+}
+
+/* 侧栏与导航永远压在同层装饰之上。
+   「有时候点不动」这类问题几乎都是叠层：某个装饰元素（光晕、投影、
+   预览图、吐纸舞台）在特定状态下长到了导航上面。导航是全局唯一的入口，
+   不该输给任何装饰，所以这里显式把它抬起来。
+   注意只抬到装饰层之上，没有超过弹层（--z-modal）那一档。 */
+[data-optics="webgl"] .rail {
+  position: relative;
+  z-index: 5;
+}
+[data-optics="webgl"] .rail .nav,
+[data-optics="webgl"] .rail__logo,
+[data-optics="webgl"] .rail__caption,
+[data-optics="webgl"] .rail-card,
+[data-optics="webgl"] .rail__foot {
+  position: relative;
+  z-index: 2;
+}
+
+/* 关键：原来 ::before / ::after 叠的是固定白色渐变，
+   那正是「固定白色描边」。光学层的高光取自背景反射方向采样，
+   暗背景下会自动变暗，所以这里必须把白渐变撤掉。
+   只留一道极细的内描边，用来在低对比背景下勾出板面轮廓。 */
+[data-optics="webgl"] .is-glass::before {
+  background: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+[data-optics="webgl"] .is-glass::after {
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+}
+[data-optics="webgl"][data-mode="light"] .is-glass::before {
+  background: none;
+  /* 这道顶部白色内描边原来给到 0.34，压在每一块面板顶边上，
+     还和着色器自己的菲涅尔边缘叠在一起 —— 浅色模式发曝的一大来源。 */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+[data-optics="webgl"][data-mode="light"] .is-glass::after {
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(74, 55, 38, 0.05);
+}
+[data-optics="webgl"][data-mode="spatial"] .is-glass::before {
+  background: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+[data-optics="webgl"][data-mode="spatial"] .is-glass::after {
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055);
+}
+
+/* 按钮必须显式声明为不可拖拽，否则它们跟着标题栏一起变成拖拽区，点不动 */
+[data-optics="webgl"] .titlebar .winbtn {
+  -webkit-app-region: no-drag;
+}
+
+/* ============================================================
+   开屏：把两个节拍重新分开
+   ============================================================
+   实测结论：窗口显示的瞬间 .app 的 opacity 就是 0，然后 1 秒内走到 1 ——
+   也就是说「内容淡入」这一拍一直是好的，并没有坏。
+
+   真正丢掉的是「背景的暖光先聚起」那一拍：背景现在是一整块 WebGL 画布，
+   从第一帧起就是满强度，于是光和内容同时出现，两拍并成一拍，
+   观感上就成了「直接蹦出来」。
+
+   所以这里：让光效层自己先亮起来，再把内容的淡入往后压 260ms。
+   两拍之间有了先后，开幕的仪式感就回来了。 */
+.optics-canvas {
+  animation: optics-bloom 880ms var(--e-out) both;
+}
+@keyframes optics-bloom {
+  from { opacity: 0; }
+  55% { opacity: 1; }
+  to { opacity: 1; }
+}
+
+/* 内容随后浮现（延迟一档，接在光后面） */
+.app {
+  animation-delay: 260ms;
+}
+[data-optics="webgl"] .rail,
+[data-optics="webgl"] .titlebar,
+[data-optics="webgl"] .stage {
+  animation-delay: 180ms;
+}
+
+/* 减少动态效果时全部取消延迟，别让人多等 */
+[data-reduce-motion="on"] .optics-canvas,
+[data-reduce-motion="on"] .app,
+[data-reduce-motion="on"] .rail,
+[data-reduce-motion="on"] .titlebar,
+[data-reduce-motion="on"] .stage {
+  animation: none !important;
+  animation-delay: 0ms !important;
+}

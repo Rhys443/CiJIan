@@ -1,0 +1,46 @@
+{
+  "name": "cijian",
+  "productName": "Cijian",
+  "version": "0.1.0",
+  "description": "此间 · 15天唤醒计划 —— 拍立得打卡仪式感工具（Windows 桌面 Demo）",
+  "main": "main.js",
+  "author": "此间",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "probe": "electron dev/probe.js",
+    "diag": "electron dev/diag.js",
+    "syntax": "node dev/check-syntax.js",
+    "icon": "electron dev/build-icon.js",
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File dev/make-shortcut.ps1",
+    "dist": "electron-builder --win portable --x64",
+    "dist:dir": "electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.cijian.demo",
+    "productName": "此间",
+    "artifactName": "Cijian-${version}-portable.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "build/icon.ico"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "portable"
+      ]
+    }
+  }
+}

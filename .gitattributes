@@ -1,0 +1,7 @@
+﻿# 统一换行符：仓库里一律 LF，避免 git 每次操作都提示 LF/CRLF 转换
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.exe binary
