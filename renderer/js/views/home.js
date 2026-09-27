@@ -6,7 +6,7 @@
   'use strict';
 
   const { h, icon, reveal, stagger, countUp, magnetize } = global.UI;
-  const { Store, CYCLE_DAYS, themeById, taskById, EMOTIONS } = global.CJ;
+  const { Store, CYCLE_DAYS, themeById, taskOr, EMOTIONS } = global.CJ;
   const { fmtCN, fmtSlash } = global.CJ.utils;
   const { photo } = global.Photo;
 
@@ -28,6 +28,10 @@
     const badges = Store.badges(cycle);
     const todayTask = Store.currentDraw(cycle, day);
     const todayCheckin = Store.checkinOf(cycle, day);
+    /* 第 16 天起这一轮就走完了：dayNumber 会一直钳在 15，
+       抽卡和打卡都只会说「今天已经收藏好了」。
+       没有出口的话用户就被永久关在最后一格里（见 Router.startNextCycle）。 */
+    const cycleComplete = Store.isCycleComplete(cycle);
 
     const wrap = h('div', { class: 'view-inner' });
 
@@ -40,8 +44,14 @@
         'div',
         { class: 'page-head' },
         h('div', { class: 'page-head__kicker' }, h('i'), h('span', { text: `CYCLE · ${theme.category}` })),
-        h('h1', {}, `${greetWord}，今天是第 `, h('em', { text: String(day) }), ' 天'),
-        h('p', { text: `${fmtCN(new Date())}　·　主题「${theme.name}」　·　再走 ${CYCLE_DAYS - day} 天，这一轮就讲完了。` })
+        cycleComplete
+          ? h('h1', {}, '这十五天，', h('em', { text: '已经走完了' }))
+          : h('h1', {}, `${greetWord}，今天是第 `, h('em', { text: String(day) }), ' 天'),
+        h('p', {
+          text: cycleComplete
+            ? `${fmtCN(new Date())}　·　主题「${theme.name}」　·　十五天已经走完，要不要再走一轮，由你决定。`
+            : `${fmtCN(new Date())}　·　主题「${theme.name}」　·　再走 ${CYCLE_DAYS - day} 天，这一轮就讲完了。`,
+        })
       )
     );
 
@@ -63,10 +73,20 @@
     const heroActions = h('div', { class: 'hero__actions' });
     const taskBlock = h('div', { class: 'hero__task' });
 
-    if (todayCheckin) {
+    if (cycleComplete) {
+      /* 这一轮唯一的出口。放在最显眼的位置，但语气仍是邀请：
+         「开始下一轮」要过一次确认，想歇几天再开始永远是可以的。 */
+      taskBlock.appendChild(h('div', { class: 'hero__task-label' }, icon('spark', 13), h('span', { text: '这一轮已经收好了' })));
+      taskBlock.appendChild(h('div', { class: 'hero__task-title', text: '十五张相纸，都留在这里了。' }));
+      taskBlock.appendChild(
+        h('p', { class: 'hero__task-guide', text: '下一轮随时可以开始，也可以先歇几天 —— 这里不催你。' })
+      );
+      heroActions.appendChild(mkBtn('开始下一轮', 'spark', 'primary', () => ctx.startNextCycle()));
+      heroActions.appendChild(mkBtn('再看一遍这一轮', 'film', 'quiet', () => ctx.go('review')));
+    } else if (todayCheckin) {
       taskBlock.appendChild(h('div', { class: 'hero__task-label' }, icon('check', 13), h('span', { text: '今天已经收藏好了' })));
       taskBlock.appendChild(
-        h('div', { class: 'hero__task-title', text: global.Polaroid.truncate(taskById(todayCheckin.taskId).title, 30) })
+        h('div', { class: 'hero__task-title', text: global.Polaroid.truncate(taskOr(todayCheckin.taskId).title, 30) })
       );
       taskBlock.appendChild(
         h('p', { class: 'hero__task-guide', text: '去日历墙看看这张相纸，或者翻到背面重读当时写下的那句话。' })
@@ -102,7 +122,8 @@
         h(
           'div',
           {},
-          h('div', { class: 'hero__date', text: fmtSlash(Store.dayDate(cycle, day)) }),
+          // 一轮走完之后「第 15 天」已经不是今天了，这里改回真实日期
+          h('div', { class: 'hero__date', text: fmtSlash(cycleComplete ? new Date() : Store.dayDate(cycle, day)) }),
           h('div', { class: 'hero__greet' }, '这一轮，你已经填满 ', h('span', { class: 'accent', text: `${stats.done}` }), ' 张相纸'),
           h('div', {
             class: 'hero__sub',
@@ -128,7 +149,8 @@
     const gridCells = h('div', { class: 'grid15' });
     for (let n = 1; n <= CYCLE_DAYS; n += 1) {
       const rec = Store.checkinOf(cycle, n);
-      const isToday = n === day;
+      // 一轮走完之后没有「今天」这一格：第 15 天不该再顶着今天的角标
+      const isToday = n === day && !cycleComplete;
       const isFuture = n > day;
       const date = Store.dayDate(cycle, n);
       if (rec) {
@@ -144,7 +166,7 @@
             h('img', { class: 'cell__img', src: rec.photo || photo(rec.photoSeed || n * 977, 320), alt: '' }),
             h('div', { class: 'cell__scrim' }),
             h('div', { class: 'cell__day', text: `D${String(n).padStart(2, '0')}` }),
-            h('div', { class: 'cell__foot', text: global.Polaroid.truncate(taskById(rec.taskId).title, 12) })
+            h('div', { class: 'cell__foot', text: global.Polaroid.truncate(taskOr(rec.taskId).title, 12) })
           )
         );
       } else {
@@ -225,7 +247,7 @@
     for (let n = Math.max(1, day - 3); n <= Math.min(CYCLE_DAYS, day + 1); n += 1) recent.push(n);
     recent.reverse().forEach((n) => {
       const rec = Store.checkinOf(cycle, n);
-      const isToday = n === day;
+      const isToday = n === day && !cycleComplete;
       const isFuture = n > day;
       const emo = rec ? EMOTIONS.find((e) => e.id === rec.emotion) || EMOTIONS[0] : null;
       tl.appendChild(
@@ -238,7 +260,7 @@
             { class: 'tl__text' },
             h('b', {
               text: rec
-                ? global.Polaroid.truncate(taskById(rec.taskId).title, 14)
+                ? global.Polaroid.truncate(taskOr(rec.taskId).title, 14)
                 : isToday
                 ? '今天 · 还空着'
                 : isFuture

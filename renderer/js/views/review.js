@@ -14,7 +14,7 @@
   'use strict';
 
   const { h, icon, reveal, stagger, countUp, typeIn, wait, magnetize } = global.UI;
-  const { Store, CYCLE_DAYS, themeById, taskById, EMOTIONS } = global.CJ;
+  const { Store, CYCLE_DAYS, themeById, taskOr, EMOTIONS } = global.CJ;
   const { fmtSlash } = global.CJ.utils;
   const { photo } = global.Photo;
 
@@ -22,6 +22,10 @@
     { id: 'ring', label: '行星环', hint: '十五张相纸绕成一圈，慢慢转' },
     { id: 'grid', label: '网格', hint: '一眼看完整轮节奏' },
   ];
+
+  /* 当前这一份渲染里的行星环。
+     它自带常驻的自转循环，Router 换页时要靠它收尾（见下面的 destroy）。 */
+  let activeRing = null;
 
   function render(ctx) {
     const cycle = ctx.cycle;
@@ -107,6 +111,7 @@
         },
       });
       ringHost.appendChild(ring.el);
+      activeRing = ring;
       requestAnimationFrame(() => ring.layout());
     }
 
@@ -130,7 +135,7 @@
               h('img', { class: 'cell__img', src: rec.photo || photo(rec.photoSeed || n * 977, 320), alt: '' }),
               h('div', { class: 'cell__scrim' }),
               h('div', { class: 'cell__day', text: `D${String(n).padStart(2, '0')}` }),
-              h('div', { class: 'cell__foot', text: global.Polaroid.truncate(taskById(rec.taskId).title, 12) })
+              h('div', { class: 'cell__foot', text: global.Polaroid.truncate(taskOr(rec.taskId).title, 12) })
             )
           );
         } else {
@@ -247,21 +252,30 @@
     );
 
     /* ---------------- 6. 底部动作 ---------------- */
+    /* 走完 15 天之后这一页必须给出下一步：以前 startNextCycle() 在数据层
+       写好了却没人调，第 16 天开始抽卡和打卡都只会说「今天已经收藏好了」，
+       用户被关在最后一格里。这里和首页用的是同一个动作、同一份文案
+       （见 Router.startNextCycle），确认一步之后才开始，不催人。 */
+    const cycleComplete = Store.isCycleComplete(cycle);
     wrap.appendChild(
       h(
         'div',
         { class: 'review-foot rise', 'data-light': true, style: { '--i': '8' } },
-        h('h3', { text: stats.done >= CYCLE_DAYS ? '十五张都满了' : '这一轮还没走完' }),
+        h('h3', { text: cycleComplete ? '十五张都收好了' : stats.done >= CYCLE_DAYS ? '十五张都满了' : '这一轮还没走完' }),
         h('p', {
-          text:
-            stats.done >= CYCLE_DAYS
-              ? '按照产品设计，这里会强制休息一天才能开启下一个十五天 —— 不许连着卷自己。'
-              : `还剩 ${CYCLE_DAYS - stats.done} 张相纸。不着急，明天再继续。`,
+          text: cycleComplete
+            ? '这一轮已经收好了。想再走一轮，就点下面的「开始下一轮」；也可以先歇几天，这里不催你。'
+            : stats.done >= CYCLE_DAYS
+            ? '按照产品设计，这里会强制休息一天才能开启下一个十五天 —— 不许连着卷自己。'
+            : `还剩 ${CYCLE_DAYS - stats.done} 张相纸。不着急，明天再继续。`,
         }),
         h(
           'div',
           { class: 'review-foot__row' },
-          mkBtn('回到今天', 'home', 'primary', () => ctx.go('home')),
+          // 一轮走完之后「开始下一轮」才是这一步该做的事，所以它接替
+          // 「回到今天」当主按钮 —— 一行里只留一个主按钮（全站一致）
+          cycleComplete ? mkBtn('开始下一轮', 'spark', 'primary', () => ctx.startNextCycle()) : null,
+          mkBtn('回到今天', 'home', cycleComplete ? 'quiet' : 'primary', () => ctx.go('home')),
           mkBtn('转到今天那张', 'refresh', 'quiet', () => {
             if (currentView !== 'ring') switchView('ring');
             if (ring) ring.rotateTo(ctx.day);
@@ -516,5 +530,16 @@
   }
 
   global.Views = global.Views || {};
-  global.Views.review = { title: '回顾', render };
+  global.Views.review = {
+    title: '回顾',
+    render,
+    /* Router 换页前会调它（见 router.js 的 go()）。
+       行星环的自转是常驻的 requestAnimationFrame：不在这里停掉，
+       用户离开回顾页之后那一圈相纸还在后台一直转、一直算纵深。 */
+    destroy() {
+      if (!activeRing) return;
+      activeRing.destroy();
+      activeRing = null;
+    },
+  };
 })(window);

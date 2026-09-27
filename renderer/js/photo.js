@@ -555,31 +555,59 @@
   }
 
   /** 把用户选中的真实图片压成相纸尺寸的 dataURL */
-  function normalizeUpload(file, size = 720) {
+  /* 把用户上传的图规范成一张方形相纸。
+     三处都是为「可用级」补的：
+
+     1. **尺寸和体积压下来**（720/q0.88 → 560/q0.80）。
+        整个 state 是塞进**一个** localStorage 键的，而 Chromium 每源配额
+        约 5MB。原来一张约 110–250KB，十五张就顶到天花板，一旦写不进去，
+        不只是这张照片没了 —— 之后所有写入（设置、抽卡、打卡）全部失效。
+        压到约 45–70KB 后，十五张加文字也只有 1MB 出头，留足余量。
+
+     2. **解码前先卡体积**。以前选一张 30MB / 5000 万像素的图，
+        渲染进程会先按原分辨率整个解码再缩，卡好几秒甚至 OOM。
+
+     3. **onload 里整体包 try/catch**。
+        side 可能算成 0（宽或高为 0 的畸形图、width="0" 的 SVG），
+        于是 drawImage 抛 IndexSizeError。那个异常抛在事件回调里、
+        不在 Promise 执行器内，所以 resolve 和 reject 都不会被调用 ——
+        Promise 永久挂起，界面表现为「点了没反应」，连错误提示都没有。 */
+  function normalizeUpload(file, size = 560) {
     return new Promise((resolve, reject) => {
+      const MAX_BYTES = 24 * 1024 * 1024;
+      if (!file) { reject(new Error('没有选择文件')); return; }
+      if (file.size > MAX_BYTES) {
+        reject(new Error('图片超过 24 MB，换一张小一点的'));
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         const img = new Image();
         img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = size;
-          canvas.height = size;
-          const ctx = canvas.getContext('2d');
-          const side = Math.min(img.width, img.height);
-          const sx = (img.width - side) / 2;
-          const sy = (img.height - side) / 2;
-          ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-          // 加一点胶片感，让真实照片和生成的画面质感统一
-          const rnd = mulberry32(Date.now() & 0xffff);
-          grade(ctx, size, size, 'rgba(210,160,110,0.12)');
-          vignette(ctx, size, size, 0.3);
-          grain(ctx, size, size, rnd, 9);
-          resolve(canvas.toDataURL('image/jpeg', 0.88));
+          try {
+            const side = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
+            if (!side || side < 1) throw new Error('这张图片读不出尺寸');
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const sx = ((img.naturalWidth || img.width) - side) / 2;
+            const sy = ((img.naturalHeight || img.height) - side) / 2;
+            ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+            // 加一点胶片感，让真实照片和生成的画面质感统一
+            const rnd = mulberry32(Date.now() & 0xffff);
+            grade(ctx, size, size, 'rgba(210,160,110,0.12)');
+            vignette(ctx, size, size, 0.3);
+            grain(ctx, size, size, rnd() * 8 | 0, 9);
+            resolve(canvas.toDataURL('image/jpeg', 0.80));
+          } catch (err) {
+            reject(err);           // 必须在这里兜住，否则 Promise 永久挂起
+          }
         };
-        img.onerror = reject;
+        img.onerror = () => reject(new Error('这张图片解不开'));
         img.src = reader.result;
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('文件读不出来'));
       reader.readAsDataURL(file);
     });
   }

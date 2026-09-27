@@ -7,7 +7,7 @@
   'use strict';
 
   const { h, icon, wait, stagger, burst, magnetize } = global.UI;
-  const { Store, themeById, tasksOf, taskById } = global.CJ;
+  const { Store, themeById, tasksOf, taskOr } = global.CJ;
 
   function render(ctx) {
     const cycle = ctx.cycle;
@@ -37,7 +37,7 @@
           'div',
           { class: 'reveal' },
           h('span', { class: 'reveal__kicker' }, icon('check', 13), h('span', { text: '今天已经收藏好了' })),
-          h('div', { class: 'reveal__title', text: global.Polaroid.truncate(taskById(existing.taskId).title, 40) }),
+          h('div', { class: 'reveal__title', text: global.Polaroid.truncate(taskOr(existing.taskId).title, 40) }),
           h('p', { class: 'muted', text: '每天的相纸只有一张。想再看它，去日历墙。' }),
           h(
             'div',
@@ -194,7 +194,11 @@
       }, 520);
 
       setTimeout(() => {
-        Store.drawCard(cycle, day);
+        /* 必须把用户点开的这张传下去。
+           以前是 Store.drawCard(cycle, day) —— 不传 task，
+           drawCard 就自己在候选池里又随机抽一张写进存档，
+           于是"翻开的卡"和"记进去的卡"永远是两张不同的卡。 */
+        Store.drawCard(cycle, day, chosen && chosen.task && chosen.task.id);
         stage.animate(
           [
             { opacity: 1, filter: 'blur(0px)' },

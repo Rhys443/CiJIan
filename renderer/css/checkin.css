@@ -105,7 +105,7 @@
   color: var(--theme-deep);
 }
 [data-mode="dark"] .shot-picker__icon {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .shot-picker__icon svg {
   width: 24px;
@@ -153,7 +153,7 @@
   box-shadow: var(--shadow-sm);
 }
 .shot-thumb.on {
-  border-color: var(--theme);
+  border-color: var(--theme-text);
   box-shadow: 0 0 0 2px var(--theme-soft);
 }
 
@@ -348,7 +348,7 @@
   color: var(--theme-deep);
 }
 [data-mode="dark"] .polish__head {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .polish__text {
   margin: 0;

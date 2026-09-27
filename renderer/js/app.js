@@ -97,6 +97,15 @@
       global.Router.ambient = ambient;
     }
 
+    // 背景层：照片 / 视频。没设底图时光学层自己退回程序化极光。
+    // 放在 optics.start() 之后 —— restore() 会立刻把源交给光学层，
+    // 这时画布已经在跑，背景能直接进纹理。
+    if (global.Background) {
+      const bgLayer = global.Background.create({ optics: optics, store: global.Store });
+      bgLayer.restore();
+      global.Router.background = bgLayer;
+    }
+
     // 凝光光效：给所有 data-light 表面挂上四层光影与跟手弥散光
     global.Light.init(document);
 

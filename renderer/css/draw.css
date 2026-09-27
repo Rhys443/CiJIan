@@ -165,7 +165,7 @@
   color: #8a7d72;
 }
 .tcard__stars {
-  color: var(--theme);
+  color: var(--theme-text);
   letter-spacing: 0.1em;
 }
 .tcard__rule {
@@ -303,7 +303,7 @@
   letter-spacing: 0.16em;
 }
 [data-mode="dark"] .reveal__kicker {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .reveal__title {
   margin: var(--sp-5) 0 var(--sp-4);

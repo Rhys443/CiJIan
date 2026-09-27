@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('cijian', {
   version: () => ipcRenderer.invoke('app:version'),
   planVerify: () => ipcRenderer.invoke('plan:verify'),
   exportData: (payload) => ipcRenderer.invoke('data:export', payload),
+  /** 选一张背景图片或视频。主进程会把文件复制进 userData/background/，
+      只回传文件名 —— 渲染进程拿不到、也不需要真实路径。 */
+  pickBackground: () => ipcRenderer.invoke('background:pick'),
   openExternal: (url) => ipcRenderer.invoke('open:external', url),
   minimize: () => ipcRenderer.invoke('window:minimize'),
   toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),

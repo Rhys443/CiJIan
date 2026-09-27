@@ -9,6 +9,15 @@
   const CYCLE_DAYS = 15;
   const STORAGE_KEY = 'cijian.state.v1';
   const SCHEMA = 'cijian/1';
+  /* 认不出来的存档会被原样挪到这里，而不是就地覆盖。
+     只有一个键的时候，「schema 不匹配 → 铺种子」等于把用户真实的
+     打卡、感想、照片全删了，而且没有任何提示。 */
+  const BACKUP_KEY = 'cijian.state.backup';
+  const BACKUP_META_KEY = 'cijian.state.backup.meta';
+  /* 旧 schema → 迁移函数。目前只有 v1，留这张表是为了下次改结构时
+     有一条路可走，而不是只能清库。 */
+  const MIGRATIONS = {};
+  const THEME_ORDER = ['move', 'make', 'link'];
 
   /* ---------------- 主题 ---------------- */
   const THEMES = [
@@ -102,6 +111,23 @@
   const tasksOf = (theme) => TASKS.filter((t) => t.theme === theme);
   const taskById = (id) => TASKS.find((t) => t.id === id) || null;
 
+  /* 存档里可能留着一张**已经不在任务池里**的卡（任务池改过、或从旧版本
+     存下来的记录）。taskById 这时返回 null，而调用方以前直接
+     `taskById(rec.taskId).title` —— 整个视图当场抛异常，页面一片空白，
+     连设置页都进不去。所以取卡统一走这里：拿不到就给一张占位卡，
+     界面照常渲染出「这张卡不在了」，而不是白屏。 */
+  const MISSING_TASK = {
+    id: '',
+    theme: '',
+    index: 0,
+    difficulty: 1,
+    isHidden: false,
+    title: '这张卡已经不在任务池里了',
+    photoGuide: '当时的画面只留在你的相纸里',
+    writingPrompt: '写下当时想写的话就好',
+  };
+  const taskOr = (id) => taskById(id) || MISSING_TASK;
+
   /* ---------------- 徽章 ---------------- */
   const BADGES = [
     { id: 'b3', days: 3, glyph: '🌱', name: '破土', desc: '连续 3 天' },
@@ -169,24 +195,88 @@
       this.listeners.forEach((fn) => fn(this.state));
     },
 
+    /* 写盘。返回 true / false，不再把异常吞掉。
+       以前是 catch{} 一吞：配额爆了照样弹「封存好了」，用户重启才发现
+       那天是空的，连签和徽章数字还往下掉 —— 而且此后**所有**写入
+       （设置、抽卡、打卡）都一起失效，全程无声。 */
     save() {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state));
+        this.lastSaveError = null;
+        return true;
       } catch (err) {
-        /* 本地存储不可用时静默降级为内存态 */
+        this.lastSaveError = err;
+        if (global.console && console.warn) {
+          console.warn('[Store] 本地存储写入失败：', (err && err.name) || '', (err && err.message) || '');
+        }
+        return false;
       }
     },
 
-    load() {
+    /* 读到认不出的存档时，先原样备份再铺新数据。
+       备份失败（比如配额满到连备份都写不进）时把 recoveredBackup 置 false，
+       调用方据此提示用户 —— 至少要让人知道东西还在不在。 */
+    quarantine(raw, schema) {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.schema === SCHEMA) return parsed;
-        }
+        localStorage.setItem(BACKUP_KEY, raw);
+        localStorage.setItem(BACKUP_META_KEY, JSON.stringify({
+          at: new Date().toISOString(),
+          schema: schema == null ? null : schema,
+        }));
+        this.recoveredBackup = true;
       } catch (err) {
-        /* ignore */
+        this.recoveredBackup = false;
       }
+    },
+
+    /* 读进来的 state 一律过一遍这里。
+       以前只检查 schema 就返回，于是缺 cycles / settings / startDate 的
+       半截数据会让每个视图依次抛异常，连设置页（唯一有「恢复演示数据」
+       按钮的地方）都打不开，用户只能手动去删 localStorage。 */
+    normalize(s) {
+      if (!s || typeof s !== 'object') return null;
+      s.settings = Object.assign({
+        mode: 'light', reminderTime: '09:00', streakReminder: true,
+        reduceMotion: false, sound: false, skipRest: true,
+      }, (s.settings && typeof s.settings === 'object') ? s.settings : {});
+      if (!Array.isArray(s.checkins)) s.checkins = [];
+      if (!Array.isArray(s.archived)) s.archived = [];
+      // 没有周期就无从修起 —— 交给上层铺种子，原始数据已进备份键
+      if (!Array.isArray(s.cycles) || !s.cycles.length) return null;
+      s.cycles = s.cycles.filter((c) => c && typeof c === 'object' && c.id);
+      if (!s.cycles.length) return null;
+      s.cycles.forEach((c) => {
+        if (!c.draws || typeof c.draws !== 'object') c.draws = {};
+        if (!c.theme || !themeById(c.theme)) c.theme = 'move';
+        if (!c.startDate) c.startDate = dateKey(new Date());
+        if (!c.status) c.status = 'active';
+      });
+      if (!s.cycles.some((c) => c.id === s.activeCycleId)) s.activeCycleId = s.cycles[s.cycles.length - 1].id;
+      return s;
+    },
+
+    load() {
+      let raw = null;
+      try { raw = localStorage.getItem(STORAGE_KEY); } catch (err) { return null; }
+      if (!raw) return null;                        // 真的首次运行
+
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch (err) { parsed = null; }
+
+      if (parsed && parsed.schema === SCHEMA) {
+        const ok = this.normalize(parsed);
+        if (ok) return ok;
+      }
+
+      if (parsed && MIGRATIONS[parsed.schema]) {
+        try {
+          const next = this.normalize(MIGRATIONS[parsed.schema](parsed));
+          if (next) { next.schema = SCHEMA; this.state = next; this.save(); return next; }
+        } catch (err) { /* 迁移失败就走备份 */ }
+      }
+
+      // 认不出来：原样备份，绝不静默丢弃
+      this.quarantine(raw, parsed && parsed.schema);
       return null;
     },
 
@@ -319,13 +409,59 @@
       const s = this.state;
       return s.cycles.find((c) => c.id === s.activeCycleId) || s.cycles[s.cycles.length - 1];
     },
-    /** 周期的第几天（1..15；超出范围时钳制） */
-    dayNumber(cycle) {
+    /* 周期内的第几天，**不钳制**。
+       钳制会带来两个连锁问题：第 16 天之后永远显示「第 15 天」，
+       而且 app.js 的跨天监听比较的正是这个钳制值，跨天刷新一起失灵。
+       另外用本地年月日差而不是毫秒差 —— 夏令时那天只有 23 小时，
+       Math.floor(ms / 86400000) 会少算一天，之后整轮都差一天。 */
+    dayIndex(cycle) {
       const start = fromKey(cycle.startDate);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const diff = Math.floor((today - start) / 86400000) + 1;
-      return Math.max(1, Math.min(CYCLE_DAYS, diff));
+      return Math.round((today - start) / 86400000) + 1;
+    },
+    /** 对外仍叫 dayNumber，钳到 1..15 */
+    dayNumber(cycle) {
+      return Math.max(1, Math.min(CYCLE_DAYS, this.dayIndex(cycle)));
+    },
+    /** 这一轮是否已经走完（第 16 天及以后） */
+    isCycleComplete(cycle) {
+      return this.dayIndex(cycle) > CYCLE_DAYS;
+    },
+    /* 开始下一轮：当前轮归档，新建一轮并激活。
+       以前根本没有这条路 —— 走完 15 天之后应用就永久卡死：
+       标题永远「第 15 天」、抽卡和打卡永远说「今天已经收藏好了」，
+       再也记不了任何一天，界面上也没有任何出口。 */
+    startNextCycle() {
+      const s = this.state;
+      const cur = this.activeCycle();
+      if (cur) {
+        cur.status = 'done';
+        if (!s.archived.includes(cur.id)) s.archived.push(cur.id);
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const prev = cur && cur.theme;
+      const i = THEME_ORDER.indexOf(prev);
+      const theme = THEME_ORDER[(i + 1) % THEME_ORDER.length] || 'move';
+      const meta = themeById(theme);
+      const id = 'cyc-' + Date.now().toString(36);
+      s.cycles.push({
+        id,
+        theme,
+        /* 取 meta.name 而不是 meta.keyword —— THEMES 里根本没有 keyword 这个字段，
+           原来那行永远落到 `cur.keyword`，也就是把上一轮的主题名抄过来。
+           今天没有代码读 cycle.keyword 所以看不出来，但这是埋着的错。 */
+        keyword: (meta && meta.name) || (cur && cur.keyword) || '',
+        startDate: dateKey(today),
+        status: 'active',
+        draws: {},
+        createdAt: new Date().toISOString(),
+      });
+      s.activeCycleId = id;
+      this.save();
+      this.emit();
+      return id;
     },
     dayDate(cycle, n) {
       return addDays(fromKey(cycle.startDate), n - 1);
@@ -365,18 +501,34 @@
     },
 
     /* ------- 动作 ------- */
-    drawCard(cycle, day) {
+    /* 抽卡。
+       forcedId 是用户在牌面上**真正点开的那一张**，必须用它。
+       以前这里完全无视用户的选择、自己在候选池里又随机抽一张写入存档，
+       于是「翻开的卡」和「记进去的卡」永远是两张不同的卡 ——
+       用户看到的任务和实际抽到的任务对不上，几乎每次都错。 */
+    drawCard(cycle, day, forcedId) {
       const used = new Set(
         Object.values(cycle.draws || {})
           .map((d) => d.taskId)
           .filter(Boolean)
       );
       const pool = tasksOf(cycle.theme);
-      let candidates = pool.filter((t) => !used.has(t.id));
-      if (!candidates.length) {
-        candidates = pool.filter((t) => t.id !== (cycle.draws[day] || {}).taskId);
+      let pick = null;
+
+      if (forcedId) {
+        const chosen = pool.find((t) => t.id === forcedId);
+        // 只接受「属于本周期主题、且还没被用过」的卡；
+        // 越界的 id 一律忽略并回退随机，避免前端传错时把不存在的任务写进存档。
+        if (chosen && !used.has(chosen.id)) pick = chosen;
       }
-      const pick = candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+      if (!pick) {
+        let candidates = pool.filter((t) => !used.has(t.id));
+        if (!candidates.length) {
+          candidates = pool.filter((t) => t.id !== (cycle.draws[day] || {}).taskId);
+        }
+        pick = candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+      }
+
       cycle.draws[day] = { taskId: pick.id, redrawUsed: false, at: new Date().toISOString() };
       this.save();
       this.emit();
@@ -480,6 +632,7 @@
     TASKS,
     tasksOf,
     taskById,
+    taskOr,
     BADGES,
     EMOTIONS,
     Store,

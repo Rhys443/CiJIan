@@ -56,6 +56,11 @@
     '.write-block',
     '.print-stage',
     '.rail-card',
+    /* 抽卡结果的「任务披露」面板本身没有底色，在极光/暖纸上直接压字很好看，
+       底图换成照片之后却变成"白字浮在照片上"，整页的主角没有承托。
+       选择器写成 [data-bg="photo"] .reveal，只有照片模式才把它玻璃化 ——
+       暖纸与极光那两套的样子一点不动。 */
+    '[data-bg="photo"] .reveal',
   ].join(',');
 
   /**
@@ -125,6 +130,28 @@ uniform float uGrain;
 uniform float uDetail;
 uniform float uDebug;
 
+/* ---------- 背景来源 ----------
+   uBgMode 0 = 程序化极光（没设底图时的默认，保留原有基础）
+           1 = 用户上传的照片或视频帧
+
+   tPhoto 是原始纹理，tFrost 是它的重度降采样版本（毛玻璃用）。
+   两者共用同一套 cover 映射，保证「折射采到的位置」与「磨砂糊出来的位置」
+   严格对得上 —— 否则玻璃边缘会和它自己的磨砂层错位。
+   uEnvAvg 由 JS 在生成 tFrost 时顺手算出（降采样图的均值），
+   菲涅尔的环境亮度用它，比在着色器里猜一个点准得多。 */
+uniform float     uBgMode;
+uniform vec2      uBgScale;
+uniform vec2      uBgOffset;
+uniform float     uOverlay;
+uniform vec3      uEnvAvg;
+uniform sampler2D tPhoto;
+uniform sampler2D tFrost;
+
+/* 全局跟手光晕（规格里的 L2） */
+uniform vec2  uGlowPos;    // 鼠标位置，css px
+uniform float uGlowAmt;    // 0..1，进出场淡入淡出
+uniform vec3  uGlowCol;
+
 uniform float uIOR;
 uniform float uDisp;
 uniform float uEdge;
@@ -189,6 +216,47 @@ vec3 auroraAt(vec2 p, float widen) {
   return acc;
 }
 
+/* ---------- 背景取色：照片/视频 或 极光 ----------
+   cover 映射与 CSS 的 object-fit:cover 等价：填满窗口、不拉伸、
+   超出的部分裁掉。窗口比例与底图比例不一致时，靠 JS 算出的
+   uBgScale/uBgOffset 把可见区域对准中心。 */
+vec2 coverUV(vec2 p) {
+  vec2 css = vec2(uRes.x / uDpr, uRes.y / uDpr);
+  return clamp(p / css * uBgScale + uBgOffset, vec2(0.0), vec2(1.0));
+}
+
+vec3 bgAt(vec2 p, float widen) {
+  vec3 c;
+  if (uBgMode > 0.5) {
+    /* 屏幕坐标 p 的 y 向下、纹理行 0 是图像顶行，两者方向一致，
+       所以这里不需要翻转 —— 加了反而会上下颠倒。 */
+    vec2 uv = coverUV(p);
+    /* widen < 1.5 是「要锐利」的那一路（背景本体 + 折射采样）。
+       折射必须采原图：糊过的图会把自己的变形一起抹掉，
+       透镜再准也看不出来 —— 这正是之前「看不出玻璃」的原因。
+       其余（毛玻璃、环境探测）走降采样那张。 */
+    c = (widen < 1.5 ? texture(tPhoto, uv) : texture(tFrost, uv)).rgb;
+  } else {
+    c = auroraAt(p, widen);
+  }
+  /* 压暗层夹在底图与玻璃之间 —— 所以放在这里而不是最后叠：
+     玻璃折射到的应该是「已经压暗过的」背景，否则玻璃下面的画面
+     会比周围亮一档，边界立刻露馅。 */
+  return c * (1.0 - uOverlay);
+}
+
+/* ---------- 全局跟手光晕 ----------
+   加在**背景之上、玻璃之下**：也就是说它先落进背景，再由玻璃去模糊、
+   去折射。这才是「光晕穿透玻璃」—— 玻璃边缘会把光晕一起掰弯。
+   如果把它做成压在玻璃上面的 DOM 层，玻璃的 blur 根本碰不到它，
+   看上去就只是贴了一张会动的膜，这也是规格把它放在 L2 的原因。 */
+vec3 addGlow(vec2 p, vec3 c) {
+  if (uGlowAmt <= 0.001) return c;
+  float r = length(p - uGlowPos);
+  float g = exp(-(r * r) / (190.0 * 190.0));
+  return c + uGlowCol * (g * uGlowAmt);
+}
+
 /* ---------- SDF ---------- */
 float sdPanel(vec2 p, vec2 b, float r, float n) {
   vec2 q = abs(p) - b + r;
@@ -232,7 +300,7 @@ void main() {
   // gl_FragCoord 原点在左下，面板坐标来自 CSS（原点在左上）
   vec2 p = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y) / uDpr;
 
-  vec3 col = auroraAt(p, 1.0);
+  vec3 col = addGlow(p, bgAt(p, 1.0));
 
   for (int k = 0; k < MAXP; ++k) {
     if (k >= uPanelCount) break;
@@ -303,12 +371,12 @@ void main() {
     vec2 dB = refractOffset(N, 1.0 / (uIOR + uDisp), T);
 
     vec3 refr;
-    refr.r = auroraAt(p + dR, 1.0).r;
-    refr.g = auroraAt(p + dG, 1.0).g;
-    refr.b = auroraAt(p + dB, 1.0).b;
+    refr.r = bgAt(p + dR, 1.0).r;
+    refr.g = bgAt(p + dG, 1.0).g;
+    refr.b = bgAt(p + dB, 1.0).b;
 
     // 毛玻璃单独一层：折射采样保持锐利，否则变形会被糊掉、根本看不见
-    vec3 frost = auroraAt(p, uWiden);
+    vec3 frost = bgAt(p, uWiden);
     vec3 body  = mix(refr, mix(refr, frost, 0.85), uFrost);
 
     // 菲涅尔：F0 由折射率算出；(n=1.52 时 F0 = 0.0426)
@@ -319,8 +387,14 @@ void main() {
     // 高光颜色来自背景：沿反射方向走过去采样，
     // 背景暗则高光暗——这里没有任何固定的白色。
     vec3 Vr = reflect(vec3(0.0, 0.0, -1.0), N);
-    vec3 envCol = auroraAt(p + Vr.xy * uProbe, 2.2);
-    vec3 envAvg = auroraAt(vec2(uRes.x / uDpr * 0.5, uRes.y / uDpr * 0.5), 7.0);
+    vec3 envCol = bgAt(p + Vr.xy * uProbe, 2.2);
+    /* 有底图时用 JS 算好的均值（生成降采样图时顺手求得），
+       比在着色器里挑一个点去猜准得多 —— 菲涅尔的环境亮度直接决定
+       玻璃边缘亮不亮，猜错会让暗背景下的边缘发白。
+       极光模式下没有这张图，仍按原来的宽高斯采中心。 */
+    vec3 envAvg = (uBgMode > 0.5)
+      ? uEnvAvg
+      : auroraAt(vec2(uRes.x / uDpr * 0.5, uRes.y / uDpr * 0.5), 7.0);
     float envLum = dot(envAvg, vec3(0.2126, 0.7152, 0.0722));
 
     vec3 spec = (envCol * 0.75 + envAvg * (0.35 + 0.65 * envLum)) * F * uHi;
@@ -334,13 +408,33 @@ void main() {
        面板内部就与背景毫无区别，整块玻璃会「消失」。
        做法是向环境色轻微收敛，而**不是加白**：
        暖纸底本来就接近白，再加白只会整片过曝，
-       收敛则把对比压下来一点，才是「一层材料盖在上面」的观感。 */
-    tinted = mix(tinted, envAvg * 1.02, 0.10);
+       收敛则把对比压下来一点，才是「一层材料盖在上面」的观感。
+
+       照片模式下这一步必须按底图亮度自适应。
+       原来固定向 envAvg 收敛，等于「背景多亮面板就多亮」；
+       碰上黄昏预设中间那条太阳带，面板跟着烧成暖橙色，
+       压在它上面的白字就没有背衬 —— 实测「填满 5 张相纸」的 5
+       和「今天的卡已经洗好了」那行小字几乎读不出来。
+       玻璃透出多亮的东西，文字就需要多强的背衬，所以这里改成
+       把面板亮度拉回一个固定区间：暗底略提、亮底压暗。
+       只在照片模式生效 —— 极光那一路是调好的，一点不动。 */
+    vec3 bodyTarget = envAvg * 1.02;
+    float panelDim = 1.0;
+    if (uBgMode > 0.5) {
+      /* 比值要夹住。底图很暗时 envLum 接近 0，不夹的话这个比值会到 29 倍，
+         把底图那一点点偏色一起放大成一块怪色（近黑但偏青的照片会变成满屏青）。
+         夹到 6 倍足够把暗底面板提到该有的亮度，又不会放大色偏。 */
+      float ratio = clamp(mix(0.44, 0.17, smoothstep(0.16, 0.78, envLum))
+                          / max(envLum, 0.015), 0.0, 6.0);
+      bodyTarget = envAvg * ratio;
+      panelDim = mix(0.86, 0.44, smoothstep(0.16, 0.78, envLum));
+    }
+    tinted = mix(tinted, bodyTarget, 0.10);
 
     float edge = smoothstep(0.55, 1.0, t);
     tinted *= mix(1.0, 1.0 - uEdgeShade, edge);
 
-    vec3 gcol = tinted + spec + caustic;
+    vec3 gcol = (tinted + spec + caustic) * panelDim;
 
     float aa = clamp(-d / max(fwidth(d), 1e-4) + 0.5, 0.0, 1.0);
     col = mix(col, gcol, aa);
@@ -455,7 +549,141 @@ void main() {
       'uRes', 'uDpr', 'uTime', 'uBg0', 'uBg1', 'uBlob', 'uBlobCol', 'uGrain', 'uDetail', 'uDebug',
       'uIOR', 'uDisp', 'uEdge', 'uFrost', 'uWiden', 'uProbe', 'uHi', 'uCaustic',
       'uCorner', 'uEdgeShade', 'uTint', 'uPanelCount', 'uRect', 'uStyle',
+      'uBgMode', 'uBgScale', 'uBgOffset', 'uOverlay', 'uEnvAvg', 'tPhoto', 'tFrost',
+      'uGlowPos', 'uGlowAmt', 'uGlowCol',
     ].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
+
+    /* ================= 背景：照片 / 视频 =================
+       mode 0 = 程序化极光（默认，没设底图时用）
+       mode 1 = 用户上传的照片或视频帧
+
+       frost 那张不走 GPU 上的 Kawase 金字塔，而是在 CPU 侧把源画到一张
+       160px 宽的小画布，再靠双线性放大回来。对毛玻璃来说，盒式降采样 +
+       双线性放大在视觉上就是高斯，而代码量比搭金字塔小一个数量级；
+       视频逐帧重做也只是 160×90 量级的绘制，代价可以忽略。
+       顺手在同一个循环里把均值求出来，供菲涅尔的环境亮度使用。 */
+    const bg = {
+      mode: 0,
+      el: null,            // HTMLImageElement / HTMLVideoElement
+      isVideo: false,
+      tex: null, frostTex: null,
+      cv: null, cx: null,
+      scale: [1, 1],
+      offset: [0, 0],
+      envAvg: [0.5, 0.5, 0.5],
+      overlay: 0.30,
+      /* 压暗层强度按底图亮度自适应（见 uploadBackground）。
+         理由：固定值只能对一类照片成立 —— 暗照片压 0.30 已经发闷，
+         亮照片压 0.30 又明显不够，白字直接糊掉。
+         调用方一旦自己 setOverlay 过，就锁住不再自动改，
+         免得把显式设置覆盖掉。 */
+      overlayTarget: 0.30,
+      overlayLocked: false,
+      lastFrame: -1,
+    };
+
+    function makeTex() {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      return t;
+    }
+    bg.tex = makeTex();
+    bg.frostTex = makeTex();
+    bg.cv = document.createElement('canvas');
+    bg.cx = bg.cv.getContext('2d', { willReadFrequently: true });
+
+    const FROST_W = 160;
+
+    /* 取背景源的真实像素尺寸。
+       必须分类型取：<canvas> 既没有 naturalWidth 也没有 videoWidth，
+       早先只写了 `el.videoWidth || el.naturalWidth`，预设底图（canvas）
+       因此拿到 0，uploadBackground 第一行就 return —— 纹理永远没上传，
+       画面上只剩一块没初始化的近黑，看着像极光还以为是配色问题。 */
+    function srcSize(el) {
+      if (!el) return { w: 0, h: 0 };
+      if (typeof el.getContext === 'function') {
+        return { w: el.width | 0, h: el.height | 0 };
+      }
+      return {
+        w: el.videoWidth || el.naturalWidth || el.width || 0,
+        h: el.videoHeight || el.naturalHeight || el.height || 0,
+      };
+    }
+
+    function uploadBackground() {
+      const el = bg.el;
+      if (!el) return;
+      const { w, h } = srcSize(el);
+      if (!w || !h) return;
+
+      gl.bindTexture(gl.TEXTURE_2D, bg.tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el);
+        bg.uploadError = '';
+      } catch (e) {
+        /* 视频尚未解码出首帧时确实会抛，跳过这一帧即可 —— 但不能就此闭嘴。
+           这个 catch 原本是静默的，于是「跨域视频源导致每一帧都抛」这种情况
+           表现为：readyState>=2、backgroundReady=true、uBgMode=1，
+           但纹理永远是空的，画面全黑，而外面一点线索都没有。
+           把错误留下来，自检里能直接读到。 */
+        bg.uploadError = String((e && e.message) || e);
+        if (!bg.uploadWarned) {
+          bg.uploadWarned = true;
+          console.warn('[optics] 背景纹理上传失败：', bg.uploadError);
+        }
+        return;
+      }
+
+      const fh = Math.max(1, Math.round(FROST_W * h / w));
+      if (bg.cv.width !== FROST_W || bg.cv.height !== fh) {
+        bg.cv.width = FROST_W; bg.cv.height = fh;
+      }
+      const cx = bg.cx;
+      cx.imageSmoothingEnabled = true;
+      cx.imageSmoothingQuality = 'high';
+      cx.clearRect(0, 0, FROST_W, fh);
+      cx.drawImage(el, 0, 0, FROST_W, fh);
+      gl.bindTexture(gl.TEXTURE_2D, bg.frostTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bg.cv);
+
+      /* 底色均值决定压暗层与面板压暗强度，但它要 getImageData ——
+         那是一次 GPU→CPU 同步回读，很贵。图只上传一次，无所谓；
+         视频是**每帧**都走这里，每帧回读一次会明显拖慢渲染。
+         所以视频降频：每 12 帧才重算一次均值，肉眼看不出差别。
+         只跳过回读本身 —— 后面的 cover 映射每帧都要算。 */
+      const wantAvg = !bg.isVideo || (bg.avgTick = (bg.avgTick || 0) + 1) % 12 === 1;
+      if (wantAvg) {
+        try {
+          const d = cx.getImageData(0, 0, FROST_W, fh).data;
+          let r = 0, g = 0, b = 0, n = 0;
+          for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+          if (n) bg.envAvg = [r / n / 255, g / n / 255, b / n / 255];
+        } catch (e) {
+          /* 跨域图会抛 SecurityError；保留上一次的均值即可 */
+        }
+      }
+
+      /* 压暗层跟着底图亮度走：底图越亮压得越多。
+         递推目标是连续值，渲染循环里再平滑逼近 ——
+         视频每帧都会重算均值，直接赋值会让压暗层跟着画面忽明忽暗。 */
+      if (!bg.overlayLocked) {
+        const lum = 0.2126 * bg.envAvg[0] + 0.7152 * bg.envAvg[1] + 0.0722 * bg.envAvg[2];
+        const t = clamp((lum - 0.18) / (0.75 - 0.18), 0, 1);
+        bg.overlayTarget = 0.20 + 0.28 * (t * t * (3 - 2 * t));
+      }
+
+      // cover 映射：与 CSS object-fit:cover 等价，居中裁切
+      const cssW = rect.w || 1, cssH = rect.h || 1;
+      const s = Math.max(cssW / w, cssH / h);
+      const dw = w * s, dh = h * s;
+      bg.scale = [cssW / dw, cssH / dh];
+      bg.offset = [(1 - cssW / dw) / 2, (1 - cssH / dh) / 2];
+    }
 
     // ---- 极光：形状与颜色仍然由 CSS 决定，这里只负责运动与绘制 ----
     const auroraEls = Array.prototype.slice.call(document.querySelectorAll('.aurora'));
@@ -478,6 +706,9 @@ void main() {
     let last = 0;
     let clock = 0;
     let mx = 0, my = 0, tmx = 0, tmy = 0;
+    /* 全局跟手光晕的状态。颜色取规格的 --primary 一系（#7B93DB），
+       略微提亮，因为它要叠在照片上而不是纯色底上。 */
+    const glow = { x: 0, y: 0, amt: 0, target: 0, col: [0.42, 0.53, 0.82] };
     let running = false;
     let reduceMotion = false;
 
@@ -672,6 +903,36 @@ void main() {
       gl.uniform1f(U.uEdgeShade, GLASS.edgeShade);
       gl.uniform4fv(U.uTint, new Float32Array(GLASS.tint));
 
+      /* ---- 背景 ---- */
+      // 视频逐帧重传；图片只在换了源之后传一次
+      if (bg.mode === 1 && bg.el) {
+        if (bg.isVideo) {
+          if (bg.el.readyState >= 2) uploadBackground();
+        } else if (bg.needsUpload) {
+          uploadBackground();
+          bg.needsUpload = false;
+        }
+      }
+      gl.uniform1f(U.uBgMode, bg.mode);
+      gl.uniform2fv(U.uBgScale, bg.scale);
+      gl.uniform2fv(U.uBgOffset, bg.offset);
+      bg.overlay += (bg.overlayTarget - bg.overlay) * Math.min(1, dt * 1.6);
+      gl.uniform1f(U.uOverlay, bg.overlay);
+      gl.uniform3fv(U.uEnvAvg, bg.envAvg);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, bg.tex);
+      gl.uniform1i(U.tPhoto, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, bg.frostTex);
+      gl.uniform1i(U.tFrost, 1);
+
+      /* ---- 全局跟手光晕 ---- */
+      // 进退场用指数逼近；位置本身不平滑（跟手要快，慢了比不跟更明显）
+      glow.amt += (glow.target - glow.amt) * Math.min(1, dt * 7);
+      gl.uniform2f(U.uGlowPos, glow.x, glow.y);
+      gl.uniform1f(U.uGlowAmt, glow.amt);
+      gl.uniform3fv(U.uGlowCol, glow.col);
+
       pushPanelUniforms();
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
@@ -690,7 +951,13 @@ void main() {
       const w = rect.w || 1, h = rect.h || 1;
       tmx = clamp((e.clientX / w) * 2 - 1, -1, 1);
       tmy = clamp((e.clientY / h) * 2 - 1, -1, 1);
+      // 全局光晕直接跟真实光标，不做平滑：光晕跟手迟钝会比不跟更明显
+      glow.x = e.clientX;
+      glow.y = e.clientY;
+      glow.target = 1;
     }
+
+    function onLeave() { glow.target = 0; }
 
     function onResize() { resize(); }
 
@@ -723,6 +990,8 @@ void main() {
         global.addEventListener('resize', onResize, { passive: true });
         if (!reduceMotion) {
           global.addEventListener('mousemove', onMove, { passive: true });
+          global.addEventListener('mouseleave', onLeave, { passive: true });
+          global.document.addEventListener('mouseleave', onLeave, { passive: true });
         }
         watchPanels();
 
@@ -741,12 +1010,55 @@ void main() {
       /** 视图切换后调用 */
       measure() { if (running) { queryPanelEls(); updatePanelRects(); } },
 
+      /* ---------------- 背景来源 ----------------
+         el 传 HTMLImageElement / HTMLVideoElement / HTMLCanvasElement。
+         三张程序化预设就是以 canvas 直接进来的（零加载、不会失败）。
+         视频由调用方保证已在播放（muted + loop + playsInline），
+         这里只负责每帧把当前帧搬进纹理。
+         传 null 即退回程序化极光。 */
+      setBackground(el, isVideo) {
+        bg.el = el || null;
+        bg.isVideo = !!isVideo;
+        if (!bg.el) { bg.mode = 0; return; }
+        bg.mode = 1;
+        bg.needsUpload = true;
+        // 图片可能还没解码完就传了空纹理；解码后再补一次
+        if (!isVideo && typeof el.decode === 'function') {
+          el.decode().then(() => { bg.needsUpload = true; }).catch(() => {});
+        }
+      },
+
+      /** 退回程序化极光 */
+      clearBackground() {
+        bg.el = null; bg.mode = 0;
+        // 极光有一档自己调好的压暗（0.30）；底图的自适应值不能留着
+        if (!bg.overlayLocked) bg.overlayTarget = 0.30;
+      },
+
+      /** 压暗层强度（规格里的 L1） */
+      setOverlay(v) { bg.overlayLocked = true; bg.overlay = clamp(v, 0, 0.9); },
+
+      get hasBackground() { return bg.mode === 1; },
+
+      /** 自检用：背景纹理上传是否一直在失败（跨域源会每帧都抛） */
+      get backgroundUploadError() { return bg.uploadError || ''; },
+
+      /** 当前背景是否已就绪（图片解码完 / 视频出帧 / 画布已绘制） */
+      get backgroundReady() {
+        if (bg.mode !== 1 || !bg.el) return false;
+        if (bg.isVideo) return bg.el.readyState >= 2;
+        // 同样是 canvas 与 img 的区别：canvas 没有 complete / naturalWidth
+        return srcSize(bg.el).w > 0;
+      },
+
       stop() {
         running = false;
         if (raf) cancelAnimationFrame(raf);
         raf = null;
         global.removeEventListener('resize', onResize);
         global.removeEventListener('mousemove', onMove);
+        global.removeEventListener('mouseleave', onLeave);
+        global.document.removeEventListener('mouseleave', onLeave);
         if (mo) { mo.disconnect(); mo = null; }
       },
 

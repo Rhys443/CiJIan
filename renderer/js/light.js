@@ -24,6 +24,8 @@
   const SELECTOR = '[data-light], .btn--primary';
 
   let attached = [];
+  /** 已经挂过光效的表面。重复绑一次会叠出两层涟漪与两个 ResizeObserver */
+  let bound = new WeakSet();
   let raf = null;
   let pointer = { x: 0.5, y: 0.5, active: false };
   let reduceMotion = false;
@@ -233,14 +235,31 @@
 
   /* ---------------- 对外接口 ---------------- */
   const Light = {
-    /** 扫描（或重新扫描）页面里所有 data-light 表面 */
+    /**
+     * 扫描（或重新扫描）root 范围内的表面。
+     *
+     * 只碰 root 里的元素，**不要**再无条件 detachAll()。
+     * 以前这里第一句就是 detachAll()，而 Router 换页时传进来的只有
+     * 视图那一个节点 —— 于是留在外壳上的表面（左侧栏、标题栏）被一起
+     * 摘掉，而且再也不会挂回去：换一次页面，侧栏的跟手弥散光就永久失效
+     * （.light-glow 还在原地，只是不再跟手），连全局的指针视差
+     * （--mx / --my）也跟着停摆。
+     * 现在只收掉已经离开 DOM 的旧表面（换页丢掉的上一份视图），
+     * 还挂在页面上的一个都不动。
+     */
     init(root = document) {
       reduceMotion =
         document.documentElement.dataset.reduceMotion === 'on' ||
         window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      this.detachAll();
       syncColors();
+      attached = attached.filter((a) => {
+        if (a.el.isConnected) return true;
+        a.detach();
+        return false;
+      });
       Array.from(root.querySelectorAll(SELECTOR)).forEach((el) => {
+        if (bound.has(el)) return; // 已经挂着，别绑第二遍
+        bound.add(el);
         el.classList.add('has-light');
         // 玻璃表面（自带 backdrop-filter）只拿静态四层光影；
         // 非玻璃表面才补跟手光晕，避免把玻璃的模糊截断。
@@ -249,12 +268,14 @@
         ensureLayers(el, !glass);
         attached.push(bindSurface(el));
       });
+      // 同一个函数、同一个选项重复注册会被忽略，所以这里不用先摘
       if (!reduceMotion) window.addEventListener('pointermove', onPointerMove, { passive: true });
       paint();
     },
     detachAll() {
       attached.forEach((a) => a.detach());
       attached = [];
+      bound = new WeakSet();
       window.removeEventListener('pointermove', onPointerMove);
     },
     syncColors,

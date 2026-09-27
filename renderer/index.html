@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'none'"
+      content="default-src 'self'; img-src 'self' data: blob: bg:; media-src 'self' data: blob: bg:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; connect-src 'none'"
     />
     <title>此间 · 15天唤醒计划</title>
     <link rel="stylesheet" href="css/tokens.css" />
@@ -19,6 +19,9 @@
     <link rel="stylesheet" href="css/surfaces.css" />
     <link rel="stylesheet" href="css/spatial.css" />
     <link rel="stylesheet" href="css/glass.css" />
+    <!-- 必须排在 glass.css 之后：glass.css 里那组 [data-optics="webgl"]
+         覆盖规则是靠层叠顺序赢的，新表插在前面会被它压掉。 -->
+    <link rel="stylesheet" href="css/background.css" />
   </head>
   <body class="framed">
     <!-- 环境氛围层挂在 body 上：窗口是透明的，圆角与阴影需要它铺满整个视口 -->
@@ -95,6 +98,7 @@
         <!-- ============ 脚本（按依赖顺序，全部为经典脚本，file:// 下可直接运行） ============ -->
     <script src="js/data.js"></script>
     <script src="js/ui.js"></script>
+    <script src="js/background.js"></script>
     <script src="js/optics.js"></script>
     <script src="js/ambient.js"></script>
     <script src="js/light.js"></script>

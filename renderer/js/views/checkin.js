@@ -7,7 +7,7 @@
   'use strict';
 
   const { h, icon, wait, burst, magnetize, stagger } = global.UI;
-  const { Store, themeById, EMOTIONS, taskById, tasksOf } = global.CJ;
+  const { Store, themeById, EMOTIONS, taskOr, tasksOf } = global.CJ;
   const { photo, normalizeUpload } = global.Photo;
 
   const MAX_LEN = 500;
@@ -16,7 +16,7 @@
     const cycle = ctx.cycle;
     const day = ctx.day;
     const theme = themeById(cycle.theme);
-    const task = Store.currentDraw(cycle, day) || taskById(tasksOf(cycle.theme)[0].id);
+    const task = Store.currentDraw(cycle, day) || taskOr(tasksOf(cycle.theme)[0].id);
     const existing = Store.checkinOf(cycle, day);
 
     const wrap = h('div', { class: 'view-inner' });
@@ -57,12 +57,19 @@
       const file = fileInput.files && fileInput.files[0];
       if (!file) return;
       try {
-        chosenSrc = await normalizeUpload(file, 720);
+        chosenSrc = await normalizeUpload(file);
         await showPrint(chosenSrc, { eject: true });
         global.UI.toast('已把本机照片洗成相纸', '📷');
         refreshPicker();
       } catch (err) {
-        global.UI.toast('这张图片读不出来，换一张试试', '✦');
+        // 把真正的失败原因说出来（太大 / 解不开 / 读不出），
+        // 而不是一律「读不出来」——否则用户不知道该换什么
+        global.UI.toast((err && err.message) || '这张图片读不出来，换一张试试', '✦');
+      } finally {
+        /* 必须清空。
+           不然下次再选**同一个文件**时 value 没变，Chromium 不会触发 change，
+           表现为「点了完全没反应」—— 用户会以为按钮坏了。 */
+        fileInput.value = '';
       }
     });
 
@@ -143,7 +150,7 @@
         day,
         date: new Date(existing.createdAt),
         theme: cycle.theme,
-        task: taskById(existing.taskId).title,
+        task: taskOr(existing.taskId).title,
         reflection: existing.reflection,
         emotion: existing.emotion,
         size: 'lg',
@@ -168,19 +175,60 @@
 
     const textarea = h('textarea', {
       placeholder: '写下今天的感觉。一句话也可以。',
-      maxlength: String(MAX_LEN + 200),
+      // 这里**不设 maxlength**：属性按 UTF-16 计长，而界面上的计数器按码点计
+      // （Array.from），两把尺子混用就会出现「计数器说超了、输入框还让打」。
+      // 上限统一交给 clampNote()。
       disabled: existing ? true : null,
     });
-    textarea.value = reflection;
+
+    /* 500 字是硬限制。
+       以前只把 500 写在计数器上，maxlength 却给了 700 —— 多出来的 200 字
+       照样能打进输入框，提交时也没人管，于是存档里留着一段界面明明标红
+       「超了」却还是收下的字。
+       截断不做无声处理：真的截了就当场说一句（同一段超长只提醒一次，
+       不跟着每一次按键重复念），计数器同时更新。 */
+    function clampNote(text, notify) {
+      const str = String(text);
+      const chars = Array.from(str);
+      if (chars.length <= MAX_LEN) return str;
+      if (notify) global.UI.toast(`背面最多 ${MAX_LEN} 字，多出来的没有收进去`, '✦');
+      return chars.slice(0, MAX_LEN).join('');
+    }
+
+    textarea.value = clampNote(reflection, false);
+    reflection = textarea.value;
     const counter = h('span', { text: `${Array.from(reflection).length} / ${MAX_LEN}` });
 
-    textarea.addEventListener('input', () => {
-      reflection = textarea.value;
+    let limitNoted = false; // 一次超长只提醒一次，避免每按一个键就弹一条
+
+    /** 输入 → state → 计数器（必要时先截断），三条路都走这里 */
+    function syncNote(notify) {
+      const raw = textarea.value;
+      const clipped = clampNote(raw, notify && !limitNoted);
+      if (clipped !== raw) {
+        limitNoted = true;
+        // 截断后光标会被顶到末尾，尽量放回原来的位置（越界就收到末尾）
+        const start = Math.min(textarea.selectionStart, clipped.length);
+        const end = Math.min(textarea.selectionEnd, clipped.length);
+        textarea.value = clipped;
+        textarea.setSelectionRange(start, end);
+      }
+      reflection = clipped;
       const len = Array.from(reflection).length;
+      if (len < MAX_LEN) limitNoted = false;
       counter.textContent = `${len} / ${MAX_LEN}`;
+      // 走到这里 len 一定 <= MAX_LEN；保留这个判断是为了兜住旧存档里超长的记录
       counter.classList.toggle('over', len > MAX_LEN);
       syncBack();
+    }
+
+    textarea.addEventListener('input', (e) => {
+      /* 输入法组字过程中不改 value：那会把正在拼的字打断，
+         超出的部分等 compositionend 再截。 */
+      if (e.isComposing) return;
+      syncNote(true);
     });
+    textarea.addEventListener('compositionend', () => syncNote(true));
 
     const emoRow = h('div', { class: 'emotion-row' });
     EMOTIONS.forEach((e) => {
@@ -233,10 +281,9 @@
               {
                 class: 'btn btn--quiet',
                 onclick: () => {
-                  reflection = polishText;
+                  // 润色版也可能超长，走同一条闸门（截断 + 计数器一起更新）
                   textarea.value = polishText;
-                  counter.textContent = `${Array.from(reflection).length} / ${MAX_LEN}`;
-                  syncBack();
+                  syncNote(true);
                   global.UI.toast('已采用润色版', '✦');
                 },
               },
@@ -292,7 +339,8 @@
     if (existing) submitBtn.setAttribute('disabled', '');
 
     async function submit() {
-      const text = textarea.value.trim();
+      // 存进去的那一刻再夹一次：无论如何都不会有超过 500 字的相纸
+      const text = clampNote(textarea.value.trim(), false);
       if (!chosenSrc) {
         global.UI.toast('先选一张今天的画面', '✦');
         return;
@@ -310,6 +358,15 @@
         polished: polishText,
         emotion: emotion || autoEmotion(text),
       });
+      /* 写盘失败必须当场说清楚。
+         以前 save() 把异常整个吞掉，界面照常弹「封存好了」，
+         用户重启才发现那天是空的；而且一旦配额爆了，
+         之后所有写入（设置、抽卡、打卡）都会一起失效，全程无声。 */
+      if (Store.lastSaveError) {
+        global.UI.toast('本地存储已满，这张相纸没能保存下来', '⚠');
+        submitBtn.removeAttribute('disabled');
+        return;
+      }
       burst(stageEl, { count: 34, power: 210 });
       if (polaroid) {
         await polaroid.flip(true);

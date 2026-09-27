@@ -13,7 +13,7 @@
   'use strict';
 
   const { h, clamp, wait } = global.UI;
-  const { CYCLE_DAYS, themeById, taskById, EMOTIONS } = global.CJ;
+  const { CYCLE_DAYS, themeById, taskOr, EMOTIONS } = global.CJ;
   const { photo } = global.Photo;
 
   const AUTO_SPEED = 7; // 度/秒：转完一圈约 51 秒
@@ -53,6 +53,7 @@
     let lastX = 0;
     let lastT = 0;
     let raf = null;
+    let destroyed = false;
     const reduceMotion =
       (global.CJ.Store.state.settings || {}).reduceMotion ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -74,7 +75,7 @@
             day: n,
             date,
             theme: cycle.theme,
-            task: taskById(rec.taskId).title,
+            task: taskOr(rec.taskId).title,
             reflection: rec.reflection,
             emotion: rec.emotion,
             size: opts.size,
@@ -175,6 +176,13 @@
     }
 
     function tick(now) {
+      /* 双保险：Router 换页前会主动调 destroy()；万一有哪条路直接把
+         环的节点从 DOM 上摘掉（重建环就会），这里也要停下来 ——
+         自转是常驻循环，漏一次就会一直转到窗口关掉。 */
+      if (destroyed || !wrap.isConnected) {
+        raf = null;
+        return;
+      }
       if (!lastT) lastT = now;
       const dt = Math.min((now - lastT) / 1000, 0.05);
       lastT = now;
@@ -230,7 +238,13 @@
       raf = requestAnimationFrame(tick);
     }
 
+    /* 收尾。
+       以前 destroy() 只被回顾页的「环 ↔ 网格」切换调用，换页时没人调它，
+       于是节点从 DOM 上摘掉之后，自转的 requestAnimationFrame 还在跑 ——
+       用户已经在别的页面上了，这一圈相纸仍在后台空转、持续烧 CPU。
+       现在由 Router 在切视图之前统一调用（见 router.js 的 go()）。 */
     function destroy() {
+      destroyed = true;
       if (raf) cancelAnimationFrame(raf);
       raf = null;
       window.removeEventListener('pointermove', onMove);
@@ -270,7 +284,7 @@
         const t = Math.min(1, (now - t0) / DUR);
         const eased = 1 - Math.pow(1 - t, 3);
         rotation = from + (target - from) * eased;
-        if (t < 1) requestAnimationFrame(spinToward);
+        if (t < 1 && !destroyed) requestAnimationFrame(spinToward);
       };
       requestAnimationFrame(spinToward);
     }
@@ -291,7 +305,7 @@
           const t = Math.min(1, (now - t0) / DUR);
           const eased = 1 - Math.pow(1 - t, 3);
           rotation = from + (target - from) * eased;
-          if (t < 1) requestAnimationFrame(go);
+          if (t < 1 && !destroyed) requestAnimationFrame(go);
         };
         requestAnimationFrame(go);
       },
@@ -303,6 +317,7 @@
       el: wrap,
       layout,
       start() {
+        if (destroyed) return;
         layout();
         startAuto();
         updateDepth();
@@ -322,7 +337,7 @@
           const t = Math.min(1, (now - t0) / DUR);
           const eased = 1 - Math.pow(1 - t, 3);
           rotation = from + (target - from) * eased;
-          if (t < 1) requestAnimationFrame(go);
+          if (t < 1 && !destroyed) requestAnimationFrame(go);
         };
         requestAnimationFrame(go);
       },

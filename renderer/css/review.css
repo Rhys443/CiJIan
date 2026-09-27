@@ -154,7 +154,7 @@
 .summary__head h3 svg {
   width: 17px;
   height: 17px;
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .summary__text {
   margin: 0;
@@ -168,7 +168,7 @@
 .summary__text::after {
   content: "▍";
   margin-left: 2px;
-  color: var(--theme);
+  color: var(--theme-text);
   animation: caret 1s steps(1) infinite;
 }
 .summary__text.is-done::after {
@@ -225,7 +225,7 @@
   color: var(--theme-deep);
 }
 [data-mode="dark"] .stat__num {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .stat__unit {
   font-size: 12.5px;
@@ -682,7 +682,7 @@
 }
 .modal__quote {
   padding-left: 16px;
-  border-left: 2px solid var(--theme);
+  border-left: 2px solid var(--theme-text);
   font-family: var(--font-serif);
   font-size: 15.5px;
   line-height: 1.9;

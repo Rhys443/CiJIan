@@ -301,6 +301,70 @@
     setTimeout(() => layer.remove(), 1700);
   }
 
+  /* ---------------- 确认弹层 ----------------
+     只有一句话和两个选择的确认。直接复用弹层那一套结构：
+     .scrim / .modal--narrow / .modal__close / .modal__body / .btn，
+     和 router.js 里 openDay 搭大图弹层用的是同一套类名（CSS 里
+     .modal--narrow 早就备好了，只是一直没人用），不另起一套对话框。
+
+     返回 Promise<boolean>：确认 true；取消 / Esc / 点背景 false。 */
+  function confirm(opts = {}) {
+    const o = Object.assign(
+      { kicker: '', title: '', text: '', note: '', confirmLabel: '好', cancelLabel: '再想想', icon: 'spark' },
+      opts
+    );
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', onKey);
+        scrim.classList.add('is-closing');
+        setTimeout(() => scrim.remove(), 300);
+        resolve(value);
+      };
+      // Esc 也关（router.js 的全局 Esc 处理只认最上面那层 scrim，效果一致）
+      const onKey = (e) => {
+        if (e.key === 'Escape') finish(false);
+      };
+      const okBtn = h(
+        'button',
+        { class: 'btn btn--primary', onclick: () => finish(true) },
+        icon(o.icon, 15),
+        h('span', { text: o.confirmLabel })
+      );
+      const modal = h(
+        'div',
+        { class: 'modal modal--narrow', role: 'dialog', 'aria-modal': 'true', 'aria-label': o.title },
+        h('button', { class: 'modal__close', onclick: () => finish(false), 'aria-label': '关闭' }, h('span', { text: '✕' })),
+        h(
+          'div',
+          { class: 'modal__body' },
+          o.kicker ? h('div', { class: 'modal__kicker' }, icon('spark', 12), h('span', { text: o.kicker })) : null,
+          h('h3', { class: 'modal__title', text: o.title }),
+          o.text ? h('div', { class: 'modal__quote', text: o.text }) : null,
+          o.note ? h('p', { class: 'modal__sub', style: { margin: '0' }, text: o.note }) : null,
+          h(
+            'div',
+            { class: 'review-foot__row', style: { marginTop: '4px' } },
+            okBtn,
+            h('button', { class: 'btn btn--ghost', onclick: () => finish(false) }, h('span', { text: o.cancelLabel }))
+          )
+        )
+      );
+      const scrim = h('div', { class: 'scrim' }, modal);
+      scrim.addEventListener('click', (e) => {
+        if (e.target === scrim) finish(false);
+      });
+      document.body.appendChild(scrim);
+      document.addEventListener('keydown', onKey);
+      // 弹层里的主按钮也要有凝光。Light.init 现在只碰自己这一层（见 light.js），
+      // 所以这里补一次不会动到侧栏、标题栏那些已经在跟手的表面。
+      if (global.Light) global.Light.init(scrim);
+      setTimeout(() => okBtn.focus(), 60);
+    });
+  }
+
   /* ---------------- 吐司 ---------------- */
   let toastHost = null;
   function toast(message, icon = '✦') {
@@ -383,6 +447,7 @@
     typeIn,
     breathe,
     burst,
+    confirm,
     toast,
     icon,
     ICONS,

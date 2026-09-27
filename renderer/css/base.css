@@ -434,7 +434,7 @@ button {
   box-shadow: var(--shadow-sm), var(--shadow-inset-hair);
 }
 .nav__item.is-active svg {
-  color: var(--theme);
+  color: var(--theme-text);
   opacity: 1;
 }
 .nav__item.is-active::before {
@@ -471,7 +471,7 @@ button {
   letter-spacing: 0.02em;
 }
 [data-mode="dark"] .nav__badge {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 
 .rail__spacer {
@@ -509,7 +509,7 @@ button {
   color: var(--theme-deep);
 }
 [data-mode="dark"] .rail-card__day b {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .rail-card__day span {
   font-size: 12px;
@@ -664,7 +664,7 @@ button {
   position: relative;
 }
 [data-mode="dark"] .page-head h1 em {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .page-head h1 em::after {
   content: "";
@@ -823,7 +823,7 @@ button {
   border: 1px solid var(--theme-line);
 }
 [data-mode="dark"] .chip {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .chip--plain {
   background: var(--surface-sunken);

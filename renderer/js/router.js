@@ -9,7 +9,7 @@
   'use strict';
 
   const { $, h, icon } = global.UI;
-  const { Store, CYCLE_DAYS, themeById, taskById, EMOTIONS } = global.CJ;
+  const { Store, CYCLE_DAYS, themeById, taskOr, EMOTIONS } = global.CJ;
   const { fmtCN } = global.CJ.utils;
   const { photo } = global.Photo;
 
@@ -30,6 +30,7 @@
     navEl: null,
     railCard: null,
     lastFocus: null,
+    mounted: null, // 当前挂着的视图模块，换页前要先请它收尾
 
     init() {
       this.el = $('#view');
@@ -104,6 +105,7 @@
         applyTheme: () => this.applyTheme(),
         applyMode: () => this.applyMode(),
         exportData: () => this.exportData(),
+        startNextCycle: () => this.startNextCycle(),
         version: () => this.version(),
         planVerify: () => this.planVerify(),
       };
@@ -144,6 +146,20 @@
       });
 
       const host = this.el;
+      /* 换页之前先请上一个视图收尾。
+         视图可以自带常驻循环（回顾页的行星环就是 requestAnimationFrame
+         一直转），以前没有任何收尾：节点虽然被 innerHTML 清掉了，
+         循环却接着跑，在别的页面上一直烧 CPU。
+         视图可选实现 destroy()；没有实现就跳过。 */
+      if (this.mounted && typeof this.mounted.destroy === 'function') {
+        try {
+          this.mounted.destroy();
+        } catch (err) {
+          /* 收尾失败不能连换页一起卡住 */
+          if (global.console && console.warn) console.warn('[Router] 视图收尾失败：', err);
+        }
+      }
+      this.mounted = view;
       host.innerHTML = '';
       host.scrollTop = 0;
       const node = view.render(this.context());
@@ -171,6 +187,11 @@
 
     /* ---------- 单日大图弹层 ---------- */
     openDay(n) {
+      /* 同一时刻只留一层弹层。
+         这里原来没有闸门：一次点击虽然只调一次，但连点、键位重复
+         或自动化脚本连调时，第二个 scrim 会叠在第一个上面，
+         而 Esc 只关得掉最上面那一层。 */
+      if (document.querySelector('.scrim')) return;
       const ctx = this.context();
       const cycle = ctx.cycle;
       const rec = Store.checkinOf(cycle, n);
@@ -178,7 +199,7 @@
         global.UI.toast('这一天没有打卡记录', '✦');
         return;
       }
-      const task = taskById(rec.taskId);
+      const task = taskOr(rec.taskId);
       const theme = themeById(cycle.theme);
       const emo = EMOTIONS.find((e) => e.id === rec.emotion) || EMOTIONS[0];
       const date = Store.dayDate(cycle, n);
@@ -274,6 +295,29 @@
       if (key === 'd') this.go('draw');
       if (key === 'c') this.go('checkin');
       if (key === 'r') this.go('review');
+    },
+
+    /* 走完 15 天之后的那条出口。
+       以前 Store.startNextCycle() 在数据层写好了，界面上却没有任何入口：
+       第 16 天开始抽卡和打卡都只会说「今天已经收藏好了」，
+       用户被永久关在最后一格里，连重新开始都做不到。
+       放在外壳上而不是各个视图里 —— 首页和回顾页用的是同一份文案、
+       同一步确认，语气是邀请（「再等等」永远是正当的选择）。 */
+    startNextCycle() {
+      global.UI.confirm({
+        kicker: 'CYCLE · 新一轮',
+        title: '要从第 1 天，再走一轮吗？',
+        text: '这一轮的十五张相纸会好好收着。新的十五天换一个主题，从第 1 天重新数起。',
+        note: '也可以过几天再说 —— 这里不催你。',
+        confirmLabel: '开始下一轮',
+        cancelLabel: '再等等',
+      }).then((ok) => {
+        if (!ok) return;
+        Store.startNextCycle();
+        // 换了一轮就是换了主题，整页都要跟着重画（go() 里会同步主题色）
+        this.rerender();
+        global.UI.toast('新一轮开始了，今天是第 1 天', '✦');
+      });
     },
 
     async exportData() {

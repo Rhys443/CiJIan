@@ -4,6 +4,14 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const bgProtocol = require('./bg-protocol');
+
+/* 自定义协议 bg:// —— 渲染进程用它读用户上传的背景图/视频。
+   实现在 bg-protocol.js：和 dev/shot.js 共用同一份，
+   免得截图工具里 bg:// 无人处理、底图一律加载失败。 */
+bgProtocol.registerScheme();
+
+const { bgDir, resolveBgPath } = bgProtocol;
 
 const REQUIRED_PLAN = {
   sha256: 'e6a509d5096d1f174faede44d5cb616c9c2e127be82f4d9567460a5792b37172',
@@ -142,7 +150,51 @@ ipcMain.handle('open:external', (_evt, url) => {
   return true;
 });
 
+/* ---------- 背景图/视频 ----------
+   文件由主进程复制进 userData/background/，渲染进程只拿到文件名。
+   刻意不走 localStorage：一张手机照片 3～8 MB、视频更大，塞进去必然爆配额，
+   而配额一爆会连带把打卡数据一起写失败 —— 那才是真正的数据事故。 */
+ipcMain.handle('background:pick', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: '选择背景图片或视频',
+    properties: ['openFile'],
+    filters: [
+      { name: '图片与视频', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'mp4', 'webm', 'mov', 'm4v'] },
+      { name: '图片', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'] },
+      { name: '视频', extensions: ['mp4', 'webm', 'mov', 'm4v'] },
+    ],
+  });
+  if (canceled || !filePaths.length) return { ok: false, canceled: true };
+
+  const src = filePaths[0];
+  try {
+    const st = await fs.promises.stat(src);
+    const MAX = 200 * 1024 * 1024;
+    if (st.size > MAX) return { ok: false, error: '文件超过 200 MB，请换小一点的' };
+
+    const dir = bgDir();
+    await fs.promises.mkdir(dir, { recursive: true });
+    const ext = (path.extname(src) || '').toLowerCase();
+    const name = 'bg-' + Date.now() + ext;
+    /* 异步复制。这里是主进程，copyFileSync 期间整个界面是冻住的 ——
+       200 MB 的视频要冻好几秒，用户会以为程序卡死了。 */
+    await fs.promises.copyFile(src, path.join(dir, name));
+
+    // 只留最新一个，避免目录无限膨胀
+    for (const f of await fs.promises.readdir(dir)) {
+      if (f === name) continue;
+      try { await fs.promises.unlink(path.join(dir, f)); } catch (e) { /* 占用中就算了 */ }
+    }
+    return { ok: true, name, size: st.size };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+});
+
 app.whenReady().then(() => {
+  // bg:// 的实体：把 background 目录里的文件当成正常响应吐回去
+  bgProtocol.registerHandler();
+
   // 开发期自检：设置 CJ_PROBE=1 时用真实主进程跑一遍冒烟测试并截图后退出。
   if (process.env.CJ_PROBE === '1') {
     require('./dev/probe.js').run();

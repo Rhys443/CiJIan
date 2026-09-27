@@ -69,7 +69,7 @@
   position: relative;
 }
 [data-mode="dark"] .hero__greet .accent {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .hero__sub {
   margin: 12px 0 0;
@@ -99,7 +99,7 @@
 }
 .ring__arc {
   fill: none;
-  stroke: var(--theme);
+  stroke: var(--theme-text);
   stroke-width: 7;
   stroke-linecap: round;
   filter: drop-shadow(0 2px 8px var(--theme-glow));
@@ -139,7 +139,7 @@
   color: var(--theme-deep);
 }
 [data-mode="dark"] .hero__task-label {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .hero__task-title {
   margin: 10px 0 6px;
@@ -265,7 +265,7 @@
   text-shadow: none;
 }
 .cell--today {
-  border-color: var(--theme);
+  border-color: var(--theme-text);
   box-shadow: 0 0 0 2px var(--theme-soft), var(--shadow-sm);
 }
 .cell--today::after {
@@ -273,7 +273,7 @@
   position: absolute;
   inset: -1px;
   border-radius: inherit;
-  border: 1px solid var(--theme);
+  border: 1px solid var(--theme-text);
   animation: today-breathe 2.8s var(--e-in-out) infinite;
   pointer-events: none;
 }
@@ -343,7 +343,7 @@
   color: var(--theme-deep);
 }
 [data-mode="dark"] .streak__num {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .streak__unit {
   font-size: 13px;
@@ -423,7 +423,7 @@
   color: var(--theme-deep);
 }
 [data-mode="dark"] .badge.on .badge__name {
-  color: var(--theme);
+  color: var(--theme-text);
 }
 .badge:hover {
   transform: translateY(-3px);

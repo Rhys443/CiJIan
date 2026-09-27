@@ -132,6 +132,72 @@
       ])
     );
 
+    /* --- 背景 ---
+       规格里的 L0。照片和视频都可以，视频静音循环。
+       不设底图时用程序化极光 —— 那是最省电的一档，也是原来的样子。 */
+    box.appendChild(
+      card('背景', [
+        field(
+          '底图',
+          '选一张照片或一段视频铺在窗口最底层，界面会变成半透明玻璃压在它上面。不设底图时用程序化极光。',
+          (() => {
+            const layer = global.Router.background;
+            const cur = (layer && layer.current()) || { type: 'none', id: '' };
+
+            const chip = (label, on, fn) =>
+              h('button', {
+                class: 'bg-chip' + (on ? ' on' : ''),
+                text: label,
+                onclick: fn,
+              });
+
+            const chips = h('div', { class: 'bg-chips' });
+            chips.appendChild(chip('极光（默认）', cur.type === 'none', () => {
+              if (layer) layer.clear();
+              ctx.rerender();
+            }));
+            ((layer && layer.presets) || []).forEach((p) => {
+              chips.appendChild(chip(p.name, cur.type === 'preset' && cur.id === p.id, () => {
+                if (layer) layer.setPreset(p.id);
+                ctx.rerender();
+              }));
+            });
+
+            const actions = h('div', { class: 'bg-actions' });
+            actions.appendChild(
+              h('button', {
+                class: 'btn btn--quiet',
+                onclick: async () => {
+                  const api = global.cijian;
+                  if (!api || !api.pickBackground) {
+                    global.UI.toast('这个版本不支持上传底图', '✦');
+                    return;
+                  }
+                  const r = await api.pickBackground();
+                  if (!r || r.canceled) return;          // 用户自己取消，不提示
+                  if (!r.ok) {
+                    global.UI.toast(r.error || '这个文件没能读进来', '✦');
+                    return;
+                  }
+                  if (layer) layer.setFile(r.name);
+                  global.UI.toast('底图换好了', '🖼');
+                  ctx.rerender();
+                },
+              }, h('span', { text: '上传图片 / 视频…' }))
+            );
+            if (cur.type === 'image' || cur.type === 'video') {
+              actions.appendChild(h('span', {
+                class: 'bg-current',
+                text: (cur.type === 'video' ? '视频：' : '图片：') + (cur.name || ''),
+              }));
+            }
+
+            return h('div', { class: 'bg-picker' }, chips, actions);
+          })()
+        ),
+      ])
+    );
+
     /* --- 数据 --- */
     box.appendChild(
       card('数据', [
