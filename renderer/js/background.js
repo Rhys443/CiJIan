@@ -245,7 +245,19 @@
         let s = null;
         try { s = JSON.parse(raw); } catch (e) { return; }
         if (!s || !s.type || s.type === 'none') return;
-        if (s.type === 'preset') { api.setPreset(s.id); return; }
+        if (s.type === 'preset') {
+          /* 预设**不能**在启动路径上同步画。
+             实测第一次画那张 1600×1000 的底图要 305ms（同进程第二次只要 17ms，
+             贵的是大画布第一次走 GPU 光栅化），而 restore() 是在 boot() 里
+             同步调的 —— 这 300ms 结结实实挡在第一帧前面，就是「开启速度有点缓慢」。
+             改成先让界面用极光出来（零成本），等主线程空下来再画预设。
+             用户感知到的启动时间因此只剩极光那一档。 */
+          const idle = global.requestIdleCallback
+            ? (fn) => global.requestIdleCallback(fn, { timeout: 1200 })
+            : (fn) => global.setTimeout(fn, 320);
+          idle(() => api.setPreset(s.id));
+          return;
+        }
         if (s.url) {
           cur = { type: s.type, id: '', url: s.url, name: s.name || '' };
           if (s.type === 'video') loadVideo(s.url, null); else loadImage(s.url, null);

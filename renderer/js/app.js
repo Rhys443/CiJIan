@@ -109,6 +109,10 @@
     // 凝光光效：给所有 data-light 表面挂上四层光影与跟手弥散光
     global.Light.init(document);
 
+    /* 粘滞：照片、勋章、小卡片跟着鼠标轻微偏移 + 放大。
+       用事件委托，所以只需要开一次，之后路由重建的 DOM 自动生效。 */
+    if (global.Magnetics) global.Magnetics.init();
+
     wireWindow();
 
     // 键盘提示

@@ -44,13 +44,19 @@
     const count = CYCLE_DAYS;
     const step = 360 / count;
 
-    let rotation = 0; // 当前整体角度
+    let rotation = 0; // 当前整体角度（左右）
+    /* 俯仰（上下）。原来视角是**锁死**在 RING_TILT 的 —— 只能左右转，
+       想看看环的正面或从稍高的角度看都不可能。
+       现在按住可以上下左右任意转，松手再缓缓回到 RING_TILT 这个舒服的角度。
+       夹在 ±70° 以内：转过头会变成从环的底下往上看，那不是这个界面想要的。 */
+    let tilt = RING_TILT;
     let velocity = AUTO_SPEED;
     let dragging = false;
     let hovered = -1;
     let focusTarget = null; // 悬停时想转到的角度
     let pointerInside = false;
     let lastX = 0;
+    let lastY = 0;
     let lastT = 0;
     let raf = null;
     let destroyed = false;
@@ -198,7 +204,7 @@
         }
       }
 
-      spin.style.transform = `rotateX(${RING_TILT}deg) rotateY(${rotation.toFixed(3)}deg)`;
+      spin.style.transform = `rotateX(${tilt.toFixed(3)}deg) rotateY(${rotation.toFixed(3)}deg)`;
       updateDepth();
 
       raf = requestAnimationFrame(tick);
@@ -255,6 +261,7 @@
     function onDown(e) {
       dragging = true;
       lastX = e.clientX;
+      lastY = e.clientY;
       velocity = 0;
       wrap.classList.add('is-dragging');
       window.addEventListener('pointermove', onMove);
@@ -264,10 +271,14 @@
     function onMove(e) {
       if (!dragging) return;
       const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
       lastX = e.clientX;
+      lastY = e.clientY;
       const delta = dx * DRAG_SPEED;
       rotation += delta;
       velocity = delta * 12; // 作为松手时的初速度
+      // 上下：往下拖 = 环的顶面朝你转过来，于是看到更多「上面」
+      tilt = Math.max(-70, Math.min(70, tilt + dy * DRAG_SPEED * 0.55));
     }
 
     function onUp() {
@@ -278,12 +289,17 @@
       // 带惯性滑行后落到最近的格位
       const target = Math.round(rotation / step) * step;
       const from = rotation;
+      const tiltFrom = tilt;
       const t0 = performance.now();
       const DUR = 620;
       const spinToward = (now) => {
         const t = Math.min(1, (now - t0) / DUR);
         const eased = 1 - Math.pow(1 - t, 3);
         rotation = from + (target - from) * eased;
+        /* 俯仰缓缓回到默认角度。不做这一步的话，
+           用户随手一拖就会把视角留在某个歪角度上，
+           下次进回顾页看到的环是斜的，像是坏了。 */
+        tilt = tiltFrom + (RING_TILT - tiltFrom) * eased;
         if (t < 1 && !destroyed) requestAnimationFrame(spinToward);
       };
       requestAnimationFrame(spinToward);

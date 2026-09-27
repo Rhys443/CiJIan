@@ -76,13 +76,20 @@
 
   const GLASS = {
     ior: 1.52,
-    dispersion: 0.012,
+    /* 色散加大：这是「玻璃感」最直接的来源。
+       原来 0.012 在中心区域几乎看不出分色，玻璃读起来像一块模糊的塑料。 */
+    dispersion: 0.030,
     edgeSlope: 0.92,
     frost: 0.62,
-    frostWiden: 2.6,
+    /* 毛玻璃的加宽半径。调小 = 折射采样更贴近原图 = 变形更锐利、更「玻璃」。 */
+    frostWiden: 2.15,
     probe: 96,
-    highlight: 1.05,
-    caustic: 0.38,
+    /* 高光与焦散都往上提，玻璃边缘才会「亮起来」，
+       底部的光才有可能被折射到控件上、在控件周围形成一圈强折射。
+       但第一版给到 1.55 / 0.72 之后每一块面板都在往外冒光，
+       整屏像背光板 —— 收到 1.30 / 0.52，强度仍然远高于原来的 1.05 / 0.38。 */
+    highlight: 1.30,
+    caustic: 0.52,
     // 圆角指数必须与 CSS 的 border-radius 一致，取 2（正圆弧）。
     //
     // 之前取 4.2（超椭圆，Apple 连续曲率）看着更"高级"，但它在对角方向上
@@ -92,13 +99,16 @@
     cornerExp: 2.0,
     edgeShade: 0.10,
     // 中频起伏的幅度。折射要有东西可弯才看得见，这一点点起伏就是
-    // 「玻璃下面确实有东西」的来源。
-    detail: 0.14,
-    // 每个面板的倒角与厚度按短边比例推算，再夹到合理区间
-    bezelRatio: 0.17,
-    bezelRange: [16, 66],
-    thicknessRatio: 0.21,
-    thicknessRange: [18, 88],
+    // 「玻璃下面确实有东西」的来源。往上提一档，多一层可弯的细节。
+    detail: 0.26,
+    /* 每个面板的倒角与厚度按短边比例推算，再夹到合理区间。
+       倒角收窄 = 折射集中在更靠边的一圈 = 边缘的「掰弯」更陡、更强烈，
+       这正是「玻璃控件周围有极其强烈的折射」想要的形状：
+       原来 0.17 的倒角摊得太开，形变被稀释成一整片的轻微扭曲，反而看不出来。 */
+    bezelRatio: 0.115,
+    bezelRange: [10, 44],
+    thicknessRatio: 0.30,
+    thicknessRange: [24, 120],
     tint: [1, 1, 1, 0.05],
   };
 
@@ -253,7 +263,11 @@ vec3 bgAt(vec2 p, float widen) {
 vec3 addGlow(vec2 p, vec3 c) {
   if (uGlowAmt <= 0.001) return c;
   float r = length(p - uGlowPos);
-  float g = exp(-(r * r) / (190.0 * 190.0));
+  /* 半径从 190 收到 105。
+     原来那团光大到快盖住半屏，而且接近纯白 —— 底图被它冲掉，
+     观感是「屏幕上有一块过曝」，不是「有个东西在发光」。
+     收小之后它才像一束光，而不是一片白雾。 */
+  float g = exp(-(r * r) / (105.0 * 105.0));
   return c + uGlowCol * (g * uGlowAmt);
 }
 
@@ -706,9 +720,15 @@ void main() {
     let last = 0;
     let clock = 0;
     let mx = 0, my = 0, tmx = 0, tmy = 0;
-    /* 全局跟手光晕的状态。颜色取规格的 --primary 一系（#7B93DB），
-       略微提亮，因为它要叠在照片上而不是纯色底上。 */
+    /* 全局跟手光晕的状态。
+       颜色不再写死一个偏蓝的近白色 —— 那正是「太白了」的来源：
+       它是**加法**叠上去的，接近纯白就意味着不管底图是什么都会被冲成白。
+       改成按当前底决定：
+         · 有底图 → 取底图自身均值的暖化版本，光是「底图的颜色更亮了一点」；
+         · 极光模式 → 取主题色再往白里混，光是「主题色的光」。
+       具体赋值在 tickGlow() 里，每帧跟着环境走。 */
     const glow = { x: 0, y: 0, amt: 0, target: 0, col: [0.42, 0.53, 0.82] };
+    let themeCol = [0.81, 0.39, 0.22];   // --theme 的解析结果，readBg 里更新
     let running = false;
     let reduceMotion = false;
 
@@ -828,13 +848,42 @@ void main() {
                 parseColor(getComputedStyle(document.body).backgroundColor) ||
                 [0.96, 0.94, 0.9, 1];
       lastBg = c.slice(0, 3).map((v) => +v.toFixed(3));
-      // 纵向渐变只往下压，不往上抬。
-      // 原来是 *1.04，等于让画面顶部比底色还亮 —— 在本来就偏亮的暖纸底上
-      // 这是实打实的过曝来源（实测全画面 9 成像素挤在最高一档里）。
+      /* 纵向渐变只往下压，不往上抬。
+         原来是 *1.04，等于让画面顶部比底色还亮 —— 在本来就偏亮的暖纸底上
+         这是实打实的过曝来源（实测全画面 9 成像素挤在最高一档里）。
+         现在只压 2%：用户明确说过「亮色模式不需要黑色的底，暖白就好」，
+         原来那 6% 会在整屏上糊出一层灰，浅色下尤其像屏幕脏了。 */
       const g0 = [c[0], c[1], c[2]];
-      const g1 = [c[0] * 0.94, c[1] * 0.94, c[2] * 0.94];
+      const g1 = [c[0] * 0.98, c[1] * 0.98, c[2] * 0.98];
       gl.uniform3fv(U.uBg0, g0);
       gl.uniform3fv(U.uBg1, g1);
+
+      // 主题色：极光模式下光晕跟着它走
+      const t = parseColor(root.getPropertyValue('--theme'));
+      if (t) themeCol = t.slice(0, 3);
+    }
+
+    /* 光晕颜色按当前底决定，每帧算一次（很便宜）。
+       底图存在时取底图均值的暖化版 —— 光就成了「底图本身亮起来的一块」，
+       而不是一层与画面无关的白。极光模式下取主题色往白里混 55%，
+       既带得住主题，又不会暗到看不出是光。 */
+    function updateGlowColor() {
+      let r, g, b;
+      if (bg.mode === 1) {
+        const e = bg.envAvg;
+        // 往暖白拉，同时整体提亮：光的色相是底图的，亮度比底图高一档
+        r = e[0] * 0.55 + 0.42;
+        g = e[1] * 0.55 + 0.38;
+        b = e[2] * 0.55 + 0.33;
+      } else {
+        r = themeCol[0] * 0.45 + 0.55;
+        g = themeCol[1] * 0.45 + 0.52;
+        b = themeCol[2] * 0.45 + 0.50;
+      }
+      // 上限压到 0.62：这是加法叠加，再高就会把底图冲成白
+      const k = 0.62 / Math.max(r, g, b, 0.001);
+      const s = Math.min(1, k);
+      glow.col[0] = r * s; glow.col[1] = g * s; glow.col[2] = b * s;
     }
 
     function draw(dt) {
@@ -928,9 +977,13 @@ void main() {
 
       /* ---- 全局跟手光晕 ---- */
       // 进退场用指数逼近；位置本身不平滑（跟手要快，慢了比不跟更明显）
+      updateGlowColor();
       glow.amt += (glow.target - glow.amt) * Math.min(1, dt * 7);
       gl.uniform2f(U.uGlowPos, glow.x, glow.y);
-      gl.uniform1f(U.uGlowAmt, glow.amt);
+      /* 强度上限从 1.0 收到 0.62：颜色已经带了底图/主题的色相，
+         再按 1.0 叠上去还是会过曝。收一档之后它是一层「有颜色的亮」，
+         不是一块白斑。 */
+      gl.uniform1f(U.uGlowAmt, glow.amt * 0.62);
       gl.uniform3fv(U.uGlowCol, glow.col);
 
       pushPanelUniforms();

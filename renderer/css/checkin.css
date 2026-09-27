@@ -102,7 +102,7 @@
   margin: 0 auto var(--sp-4);
   border-radius: 50%;
   background: var(--theme-soft);
-  color: var(--theme-deep);
+  color: var(--theme-text);
 }
 [data-mode="dark"] .shot-picker__icon {
   color: var(--theme-text);
@@ -345,7 +345,7 @@
   margin-bottom: 8px;
   font-size: 11px;
   letter-spacing: 0.16em;
-  color: var(--theme-deep);
+  color: var(--theme-text);
 }
 [data-mode="dark"] .polish__head {
   color: var(--theme-text);

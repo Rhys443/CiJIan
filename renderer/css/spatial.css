@@ -497,10 +497,8 @@
   box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9), var(--glass-inset);
 }
 
-/* 高光扫过按钮的动画在暗色下太亮，收一点 */
-[data-mode="spatial"] .btn--primary::after {
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.22), transparent);
-}
+/* 主按钮的悬停反馈统一改成 HDR 提亮（见 base.css），跑马灯已经取消，
+   所以这里不再需要「把扫光调暗」那条规则。 */
 
 /* 焦点环换成冷色（系统焦点色） */
 [data-mode="spatial"] *:focus-visible {

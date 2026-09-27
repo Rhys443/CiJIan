@@ -65,7 +65,7 @@
   letter-spacing: 0;
 }
 .hero__greet .accent {
-  color: var(--theme-deep);
+  color: var(--theme-text);
   position: relative;
 }
 [data-mode="dark"] .hero__greet .accent {
@@ -136,7 +136,7 @@
   gap: 8px;
   font-size: 11px;
   letter-spacing: 0.22em;
-  color: var(--theme-deep);
+  color: var(--theme-text);
 }
 [data-mode="dark"] .hero__task-label {
   color: var(--theme-text);
@@ -340,7 +340,7 @@
   font-size: 46px;
   line-height: 1;
   font-weight: 600;
-  color: var(--theme-deep);
+  color: var(--theme-text);
 }
 [data-mode="dark"] .streak__num {
   color: var(--theme-text);
@@ -420,7 +420,7 @@
   transform: scale(1.06);
 }
 .badge.on .badge__name {
-  color: var(--theme-deep);
+  color: var(--theme-text);
 }
 [data-mode="dark"] .badge.on .badge__name {
   color: var(--theme-text);

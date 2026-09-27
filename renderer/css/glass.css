@@ -236,7 +236,16 @@
 
 /* 侧栏按 HIG 是 regular 变体，本来就比卡片更实一点，所以留得厚一些 */
 [data-optics="webgl"] .rail {
-  background-color: color-mix(in srgb, var(--surface) 80%, transparent);
+  /* background-image 必须一起清掉！
+     .rail 的底色原本写的是 `background: linear-gradient(三层白)`，
+     而其他表面用的是纯色 `background: var(--surface)`。
+     只改 background-color 是没用的 —— **渐变属于 background-image**，
+     那层白（0.52 / 0.34 / 0.44）会原地不动地留着，
+     结果就是三套模式里唯独侧栏糊成一块发白的「白内障」，
+     底图在它后面几乎看不见，而卡片一直是正常的。
+     这个坑很隐蔽：改颜色的写法看起来完全正确，肉眼看也只像是「侧栏材质厚一点」。 */
+  background-image: none;
+  background-color: color-mix(in srgb, var(--surface) 72%, transparent);
   /* 顶栏取消之后侧栏直接顶到窗口上沿，--sp-5 显得太高、整块文字贴着上边缘。
      退回 --sp-6，让它在圆角里落下来一点。 */
   padding-top: var(--sp-6);
@@ -400,10 +409,10 @@
   --hairline-image: 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
-/* 窗口外圈：暖褐描边 + 暖褐投影在深色照片上很脏，换成中性黑 */
+/* 窗口外圈：暖褐描边 + 暖褐投影在深色照片上很脏，换成中性黑。
+   注意这里已经没有 0 0 0 1px 那圈描边了 —— 见 surfaces.css 的说明。 */
 [data-bg="photo"] .app {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.10),
-              0 24px 64px -20px rgba(0, 0, 0, 0.62);
+  box-shadow: 0 24px 64px -20px rgba(0, 0, 0, 0.62);
 }
 
 /* 相纸必须保持实心暖白 —— 规格专门交代过：
@@ -421,10 +430,31 @@
    那片亮天空上，整条侧栏连同里面的白字一起被冲淡 ——
    实测「数据全部保存在本机」和「把「做一件事」变成「收藏一个瞬间」」
    两行几乎看不见。改成暗色薄玻璃，薄的同时白字有背衬。 */
-[data-optics="webgl"][data-bg="photo"] .rail {
-  background-color: rgba(10, 14, 20, 0.42);
-  border-right: 1px solid rgba(255, 255, 255, 0.14);
+/* ============================================================
+   粘滞：照片 / 勋章 / 小卡片跟手
+   ============================================================
+   用 translate / scale 这两个**独立属性**，而不是 transform。
+   这些元素里已经有大量 transform 在做布局（相纸翻面、环的 3D 摆位、
+   入场动画），再写一条 transform 会把它们整个覆盖掉；
+   独立属性是和 transform 合成的，两边互不干扰。
+   幅度刻意很小：放大 1.03、位移最多 6px —— 是「材质跟着手走一点」，
+   再大就变成元素在乱动了。 */
+[data-mag] {
+  translate: var(--mag-x, 0px) var(--mag-y, 0px);
+  scale: var(--mag-s, 1);
+  transition: translate 340ms var(--e-settle), scale 340ms var(--e-settle),
+    box-shadow 340ms var(--e-out), filter 340ms var(--e-out);
 }
+[data-reduce-motion="on"] [data-mag] {
+  translate: none;
+  scale: none;
+  transition: none;
+}
+
+/* 侧栏在照片底上不再单独写一套 —— 上面那条通用规则已经把它和卡片对齐了。
+   原来这里是硬编码的 rgba(10,14,20,0.42)，等于侧栏永远比卡片厚一档，
+   正是「侧栏看起来和别的模块不一样」的来源之一。
+   交界那条发丝线由 .rail-edge::before 提供，三套模式共用。 */
 
 /* 强调色当文字用时必须提亮。
    三套主题原本的强调色（#cf6438 / #b0793c / #7d6a8f）是为了压在暖纸底上

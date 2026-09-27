@@ -144,6 +144,13 @@ button {
   opacity: 0.5;
   background: radial-gradient(circle at 50% 50%, var(--aurora-3, rgba(125, 154, 168, 0.3)), transparent 70%);
 }
+/* 浅色模式下把这团冷光收掉大半。
+   暗角取消之后，它就是画面里唯一的冷源 —— 四团光叠在一起平均值接近中性灰，
+   于是「暖纸」看起来变成了灰白，用户明确要的是「暖白色」。
+   深色模式不动：暗房里那点冷调是需要的。 */
+[data-mode="light"] .aurora--4 {
+  opacity: 0.18;
+}
 [data-reduce-motion="on"] .aurora {
   transition: none;
 }
@@ -212,14 +219,22 @@ button {
   }
 }
 
-/* 暗角 */
+/* 暗角
+   浅色模式下**取消**。原来这里有一圈 14% 的暖褐暗角，
+   本意是给暖纸加一点纵深，实际效果是左上角糊出一层灰 ——
+   亮色界面本来就该是干净的暖白，压一层灰只会让人以为屏幕脏了，
+   而且它正好压在标题区，把 kicker 和强调字一起拖进低对比度。
+   深色模式保留：暗房的暗角是合理的，那里本来就要收边。 */
 .vignette {
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 90% at 50% 42%, transparent 42%, rgba(74, 56, 40, 0.14) 100%);
+  background: none;
 }
 [data-mode="dark"] .vignette {
   background: radial-gradient(120% 90% at 50% 42%, transparent 34%, rgba(0, 0, 0, 0.5) 100%);
+}
+[data-mode="spatial"] .vignette {
+  background: radial-gradient(120% 90% at 50% 42%, transparent 34%, rgba(0, 0, 0, 0.55) 100%);
 }
 
 /* ============================================================
@@ -465,7 +480,7 @@ button {
   padding: 1px 7px;
   border-radius: var(--r-full);
   background: var(--theme-soft);
-  color: var(--theme-deep);
+  color: var(--theme-text);
   font-size: 10.5px;
   font-family: var(--font-mono);
   letter-spacing: 0.02em;
@@ -506,7 +521,7 @@ button {
   font-size: 34px;
   line-height: 1;
   font-weight: 600;
-  color: var(--theme-deep);
+  color: var(--theme-text);
 }
 [data-mode="dark"] .rail-card__day b {
   color: var(--theme-text);
@@ -640,7 +655,10 @@ button {
   gap: 10px;
   font-size: 11px;
   letter-spacing: 0.3em;
-  color: var(--text-faint);
+  /* 11px + 0.3em 字距的小字最容易糊。原来用 --text-faint（1.96:1），
+     实测用户直接圈出来说看不清。这里单独提到 --text-mute（4.3:1）——
+     它是眉标不是正文，但眉标也得先读得出来才算眉标。 */
+  color: var(--text-mute);
   text-transform: uppercase;
 }
 .page-head__kicker i {
@@ -660,7 +678,7 @@ button {
 }
 .page-head h1 em {
   font-style: normal;
-  color: var(--theme-deep);
+  color: var(--theme-text);
   position: relative;
 }
 [data-mode="dark"] .page-head h1 em {
@@ -761,26 +779,21 @@ button {
   color: #fff9f4;
   box-shadow: 0 1px 2px rgba(42, 35, 32, 0.12), 0 10px 26px -12px var(--theme-glow);
 }
+/* 主按钮的悬停反馈：提亮，不扫光。
+   原来这里是一道 40% 宽的白光斜着扫过去（跑马灯）。问题有三：
+   一，它是一层「贴上去的白」，跟按钮自身的材质没关系，暗色主题下尤其假；
+   二，扫光跟界面的物理隐喻冲突 —— 此间没有光源在扫射；
+   三，满屏几十个按钮都用同一招，看多了很像网页广告位。
+   改成把按钮**自身**的亮度抬一档 + 饱和度微增 + 边缘一点暖色溢出，
+   读起来就像屏幕这块地方真的更亮了（HDR 的做法），而不是有东西从上面经过。 */
 .btn--primary:hover {
-  box-shadow: 0 2px 6px rgba(42, 35, 32, 0.14), 0 18px 40px -16px var(--theme-glow);
+  filter: brightness(1.13) saturate(1.10);
+  box-shadow: 0 1px 2px rgba(42, 35, 32, 0.14), 0 0 0 1px rgba(255, 196, 140, 0.28),
+    0 18px 40px -16px var(--theme-glow);
 }
-/* 主按钮上的高光扫过 */
-.btn--primary::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 40%;
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.42), transparent);
-  transform: translateX(-160%) skewX(-18deg);
-}
-.btn--primary:hover::after {
-  animation: btn-sheen 780ms var(--e-out);
-}
-@keyframes btn-sheen {
-  to {
-    transform: translateX(320%) skewX(-18deg);
-  }
+.btn--primary {
+  transition: filter var(--d-base) var(--e-out), box-shadow var(--d-base) var(--e-out),
+    transform var(--d-fast) var(--e-out), border-color var(--d-base) var(--e-out);
 }
 .btn--ghost {
   border-color: transparent;
@@ -817,7 +830,7 @@ button {
   padding: 4px 11px;
   border-radius: var(--r-full);
   background: var(--theme-soft);
-  color: var(--theme-deep);
+  color: var(--theme-text);
   font-size: 11.5px;
   letter-spacing: 0.08em;
   border: 1px solid var(--theme-line);

@@ -29,10 +29,20 @@ app.whenReady().then(async () => {
 
   for (const id of ids) {
     const dataUrl = await win.webContents.executeJavaScript(`(() => {
+      /* 顺手把绘制耗时量出来。预设是**启动时同步画**的（restore() 里
+         直接 setPreset），所以这段时间会实打实挡住第一帧 ——
+         用户说的「开启速度有点缓慢」很可能就是它。 */
+      const t0 = performance.now();
       const api = window.Background.create({});
+      const t1 = performance.now();
       api.setPreset(${JSON.stringify(id)});
+      const t2 = performance.now();
       const c = api.element;
+      window.__paintMs = { create: t1 - t0, paint: t2 - t1 };
       return c && c.toDataURL ? c.toDataURL('image/jpeg', 0.88) : null; })()`);
+
+    const ms = await win.webContents.executeJavaScript('JSON.stringify(window.__paintMs)');
+    console.log('TIMING ' + id + ' ' + ms);
 
     if (!dataUrl) { console.log('FAIL', id); continue; }
     const buf = Buffer.from(dataUrl.split(',')[1], 'base64');

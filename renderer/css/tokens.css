@@ -65,8 +65,9 @@
      --theme 是**填充**：主按钮背景是它的渐变，上面压着近白文字，
      所以它天生偏暗，调亮就把主按钮一起毁掉。
      --theme-text 是**文字/描边**：压在玻璃上，背景多亮它就得跟着亮。
-     默认两者同值 —— 没设底图时三种主题的观感一点不变。 */
-  --theme-text: var(--theme);
+     默认取 --theme-deep（原样保留亮色下的观感），
+     深色与照片模式下再把它提亮 —— 见 base.css / glass.css。 */
+  --theme-text: var(--theme-deep);
 
   /* ---------- 语义色（Semantic Colors） ---------- */
   --bg: var(--paper-050);
@@ -82,11 +83,15 @@
   --separator-opaque: rgba(58, 49, 44, 0.16);
   --border: rgba(58, 49, 44, 0.11);
   --border-strong: rgba(58, 49, 44, 0.2);
-  /* Label 层级：label → secondaryLabel → tertiaryLabel → quaternaryLabel */
+  /* Label 层级：label → secondaryLabel → tertiaryLabel → quaternaryLabel
+     整条往下压了一档。原来的 ink-400（#a99c91）压在暖纸底（#e6dbca）上
+     只有 **1.96:1**，而它被用在 11px 的眉标、说明文字、卡片脚注上 ——
+     小字要 4.5:1 才读得清，1.96 等于没写。实测用户直接反馈「看不清」。
+     现在 faint ≈ 3.0:1、mute ≈ 4.3:1，层级关系不变，只是整体往下挪一档。 */
   --text: var(--ink-900);
   --text-soft: var(--ink-600);
-  --text-mute: var(--ink-500);
-  --text-faint: var(--ink-400);
+  --text-mute: #6f6258;
+  --text-faint: #8a7c71;
 
   /* ---------- 阴影：Depth 由分层阴影表达 ----------
      每一档都是「接触层 + 关键层 + 环境层」三段叠加。
@@ -237,6 +242,10 @@
   --text-soft: #cec1b3;
   --text-mute: #a89b8e;
   --text-faint: #837568;
+  /* 暗底上强调色当文字用时必须往亮走。
+     默认的 --theme-text 跟着 --theme-deep（深陶土），压在这个底色上只有 2.7:1。
+     换成 --theme 之后约 4.1:1。空间模式自己把 --theme 改成了冷蓝，跟着走即可。 */
+  --theme-text: var(--theme);
   --paper-000: #241e1a;
   --paper-050: #2a2320;
   --paper-100: #322a25;

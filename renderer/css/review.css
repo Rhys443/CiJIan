@@ -222,7 +222,7 @@
   font-size: 36px;
   font-weight: 600;
   line-height: 1;
-  color: var(--theme-deep);
+  color: var(--theme-text);
 }
 [data-mode="dark"] .stat__num {
   color: var(--theme-text);
@@ -651,7 +651,7 @@
 }
 .modal__close:hover {
   background: var(--theme-soft);
-  color: var(--theme-deep);
+  color: var(--theme-text);
   transform: rotate(90deg);
 }
 .modal__title {
