@@ -152,7 +152,11 @@
               });
 
             const chips = h('div', { class: 'bg-chips' });
-            chips.appendChild(chip('极光（默认）', cur.type === 'none', () => {
+            /* 「极光」不是一个底图选项，而是**没有底图**这个状态本身。
+               原来它和黄昏/林间/夜色并列摆在一起，于是能出现「极光 + 一张照片」
+               这种自相矛盾的状态 —— 表现是半透明面板压在照片上，
+               像蒙了一层白内障，字也没法读。文案改成「移除底图」，语义就通了。 */
+            chips.appendChild(chip('移除底图（极光）', cur.type === 'none', () => {
               if (layer) layer.clear();
               ctx.rerender();
             }));

@@ -368,14 +368,14 @@
    但底图是照片，本身就可能很亮 —— 白纱叠亮底等于面板跟着亮，
    白字当场失去背衬。详见下面 --surface 那段。
 
-   刻意限定在 [data-bg="photo"] 下，而且**排除浅色外观**。
-   浅色 + 底图 = 暖白玻璃 + 带一点棕的灰黑文字（沿用原来的 ink 系列）；
-   深色 / 空间 + 底图才走下面这套白字暗玻璃。
+   刻意限定在 [data-bg="photo"] 下 —— 没设底图时仍然是程序化极光 + 暖纸，
+   浅色·暖纸 / 深色·暗房 / 空间·玻璃 三套主题各自原本的配色一点不动。
 
-   早先的写法是「只要设了底图就一律转深色」，理由是白字在任何照片上都读得出来。
-   代价是：用户选了「浅色·暖纸」，界面却是黑的 —— 外观开关形同虚设。
-   ============================================================ */
-[data-bg="photo"]:not([data-mode="light"]) {
+   **只有极光（没底图）用棕黑字；只要设了底图，一律白字。**
+   中间试过一版「浅色 + 底图 = 暖白玻璃 + 棕黑字」，那是把「暖白用棕黑字」
+   误解成了对底图模式也成立 —— 结果是照片被一层实心暖白盖住，
+   既丢了玻璃，字也压在照片上读不清。已经改回来。 */
+[data-bg="photo"] {
   --bg: #10151f;
   --paper-050: #10151f;
   --paper-000: #1a2130;
@@ -471,6 +471,7 @@
 [data-scene="forest"] {
   --theme: #4E8A3C;
   --theme-deep: #33602A;
+  --theme-hi: #9FD98A;      /* 暗底上用这个 */
   --theme-glow: rgba(78, 138, 60, 0.5);
   --theme-soft: rgba(78, 138, 60, 0.16);
   --theme-line: rgba(78, 138, 60, 0.34);
@@ -478,6 +479,7 @@
 [data-scene="night"] {
   --theme: #3E6FC4;
   --theme-deep: #2A4E93;
+  --theme-hi: #8FC2FF;
   --theme-glow: rgba(62, 111, 196, 0.5);
   --theme-soft: rgba(62, 111, 196, 0.16);
   --theme-line: rgba(62, 111, 196, 0.34);
@@ -487,20 +489,14 @@
 [data-scene="dusk"] {
   --theme: #CF6438;
   --theme-deep: #A94A24;
+  --theme-hi: #FFB184;
   --theme-glow: rgba(207, 100, 56, 0.5);
   --theme-soft: rgba(207, 100, 56, 0.16);
   --theme-line: rgba(207, 100, 56, 0.34);
 }
-/* 深色与照片深色模式下，场景色也要给一个提亮版本，
-   否则绿和蓝在暗底上比橙更沉，直接读不出来。 */
-[data-scene="forest"][data-mode="dark"],
-[data-scene="forest"]:not([data-mode="light"])[data-bg="photo"] {
-  --theme-text: #9FD98A;
-}
-[data-scene="night"][data-mode="dark"],
-[data-scene="night"]:not([data-mode="light"])[data-bg="photo"] {
-  --theme-text: #8FC2FF;
-}
+/* 场景给的是三个值（填充 / 亮底文字 / 暗底文字），
+   「用哪一个」由模式决定 —— 见下面 [data-bg="photo"] 与 tokens.css 的暗色块。
+   所以这里不再需要按模式分别写死 --theme-text，那一版正是优先级打架的来源。 */
 
 /* 侧栏在照片底上不再单独写一套 —— 上面那条通用规则已经把它和卡片对齐了。
    原来这里是硬编码的 rgba(10,14,20,0.42)，等于侧栏永远比卡片厚一档，
@@ -517,45 +513,30 @@
    跟着提亮会把主按钮反过来毁掉。
    色相保持不变，只把亮度提上来，三套主题的心情还是各自那一套。
 
-   **同样要排除浅色**：浅色 + 底图是暖白玻璃，底色本来就是亮的，
-   把强调色提亮成 #ffb184 反而看不见了 —— 那里应该继续用偏深的 --theme-deep。 */
-[data-bg="photo"]:not([data-mode="light"]) {
-  --theme-text: #ffc49a;
-}
-[data-bg="photo"]:not([data-mode="light"])[data-theme="move"] {
-  --theme-text: #ffb184;
-}
-[data-bg="photo"]:not([data-mode="light"])[data-theme="make"] {
-  --theme-text: #f0cd85;
-}
-[data-bg="photo"]:not([data-mode="light"])[data-theme="link"] {
-  --theme-text: #c9b6ea;
-}
-/* 空间主题本来就是冷色玻璃，提亮后沿用同一族色相。
-   注意空间走的是 data-mode 而不是 data-theme —— 写成 [data-theme="spatial"]
-   是个永远不会命中的选择器（已经踩过一次）。 */
-[data-bg="photo"][data-mode="spatial"] {
-  --theme-text: #8ec5ff;
+   **但这里不能再硬编码具体颜色。**
+   上一版写的是 [data-bg="photo"][data-theme="move"] { --theme-text: #ffb184 }，
+   优先级 (0,2,0)，把场景色 (0,1,0) 整个盖住 ——
+   现象就是面板和开关跟着林间变绿了，标题的强调字和左下角的数字还是橙的。
+   现在统一成「取该场景/主题的提亮版」：色相永远由 data-scene / data-theme 决定，
+   模式只决定取哪一档（--theme-deep 亮底用 / --theme-hi 暗底用）。 */
+[data-bg="photo"] {
+  --theme-text: var(--theme-hi);
 }
 
-/* 浅色 + 底图：暖白玻璃，文字回到带一点棕的灰黑。
-   文字令牌不另写 —— 直接用 :root 的 ink 系列（#2a2320 / #3a312c / #4c423b），
-   本来就是暖调的灰黑。这里只把表面调实一点：底图是照片，
-   太薄会让文字压在杂乱的花纹上，读起来累。 */
-[data-bg="photo"][data-mode="light"] {
-  --surface: rgba(250, 245, 237, 0.90);
-  --surface-solid: #f8f3ec;
-  --surface-sunken: rgba(228, 214, 196, 0.46);
-  --text: #2a2320;
-  --text-soft: #3a312c;
-  --text-mute: #4c423b;
-  --text-faint: #6f6258;
-  --border: rgba(58, 49, 44, 0.13);
-  --border-strong: rgba(58, 49, 44, 0.22);
-  --separator: rgba(58, 49, 44, 0.11);
-  --separator-opaque: rgba(58, 49, 44, 0.17);
-  /* 浅底上强调色要往深走，与深色模式相反 */
-  --theme-text: var(--theme-deep);
+/* 浅色 + 底图不再单独写一套。
+   曾经在这里给过一版「暖白玻璃 + 棕黑文字」，那是对用户原话的误读 ——
+   「暖白用棕黑字」说的是**极光**（没底图）那一档，不是有底图的时候。
+   有底图就一律走上面的白字暗玻璃，三套外观共用同一套令牌
+   （外观差异留给主题色与场景色，见 data-scene）。 */
+
+/* 底图模式下把纸纹与胶片颗粒整个去掉。
+   .paper-grain 用的是 mix-blend-mode: multiply —— 那是**乘法**，
+   全屏叠一层棕色纹理，压在照片上就是一层洗不掉的脏灰。
+   暖纸上它是对的（那是纸的纤维），照片上它只是脏。 */
+[data-bg="photo"] .paper-grain,
+[data-bg="photo"] .film-grain,
+[data-bg="photo"] .vignette {
+  display: none;
 }
 
 /* 底图模式下三套外观仍然要能分辨。

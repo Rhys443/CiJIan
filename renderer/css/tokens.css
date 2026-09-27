@@ -68,6 +68,8 @@
      默认取 --theme-deep（原样保留亮色下的观感），
      深色与照片模式下再把它提亮 —— 见 base.css / glass.css。 */
   --theme-text: var(--theme-deep);
+  /* 没选任何主题皮肤时的兜底 */
+  --theme-hi: #ffb184;
 
   /* ---------- 语义色（Semantic Colors） ---------- */
   --bg: var(--paper-050);
@@ -199,6 +201,10 @@
 [data-theme="move"] {
   --theme: #cf6438;
   --theme-deep: #a94a24;
+  /* 暗底上用的提亮版。每个主题/场景一次给三个值，
+     由「模式」去挑用哪一个（见 glass.css），而不是各处硬编码。
+     硬编码会导致换色相时填充跟着走、文字跟不上 —— 已经踩过。 */
+  --theme-hi: #ffb184;
   --theme-soft: rgba(207, 100, 56, 0.13);
   --theme-line: rgba(207, 100, 56, 0.32);
   --theme-glow: rgba(207, 100, 56, 0.34);
@@ -208,6 +214,7 @@
 [data-theme="make"] {
   --theme: #b0793c;
   --theme-deep: #8d5c25;
+  --theme-hi: #f0cd85;
   --theme-soft: rgba(176, 121, 60, 0.13);
   --theme-line: rgba(176, 121, 60, 0.32);
   --theme-glow: rgba(176, 121, 60, 0.32);
@@ -217,6 +224,7 @@
 [data-theme="link"] {
   --theme: #7d6a8f;
   --theme-deep: #60506f;
+  --theme-hi: #c9b6ea;
   --theme-soft: rgba(125, 106, 143, 0.14);
   --theme-line: rgba(125, 106, 143, 0.32);
   --theme-glow: rgba(125, 106, 143, 0.32);
@@ -242,10 +250,9 @@
   --text-soft: #cec1b3;
   --text-mute: #a89b8e;
   --text-faint: #837568;
-  /* 暗底上强调色当文字用时必须往亮走。
-     默认的 --theme-text 跟着 --theme-deep（深陶土），压在这个底色上只有 2.7:1。
-     换成 --theme 之后约 4.1:1。空间模式自己把 --theme 改成了冷蓝，跟着走即可。 */
-  --theme-text: var(--theme);
+  /* 暗底上强调色当文字用时必须往亮走 —— 取该主题/场景的提亮版。
+     默认的 --theme-text 跟着 --theme-deep（深色），压在这个底色上只有 2.7:1。 */
+  --theme-text: var(--theme-hi);
   --paper-000: #241e1a;
   --paper-050: #2a2320;
   --paper-100: #322a25;
