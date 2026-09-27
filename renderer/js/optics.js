@@ -84,12 +84,13 @@
     /* 毛玻璃的加宽半径。调小 = 折射采样更贴近原图 = 变形更锐利、更「玻璃」。 */
     frostWiden: 2.15,
     probe: 96,
-    /* 高光与焦散都往上提，玻璃边缘才会「亮起来」，
-       底部的光才有可能被折射到控件上、在控件周围形成一圈强折射。
+    /* 高光与焦散都往上提，玻璃边缘才会「亮起来」。
        但第一版给到 1.55 / 0.72 之后每一块面板都在往外冒光，
-       整屏像背光板 —— 收到 1.30 / 0.52，强度仍然远高于原来的 1.05 / 0.38。 */
-    highlight: 1.30,
-    caustic: 0.52,
+       整屏像背光板 —— 收到 1.30 / 0.52。
+       现在公式换成了窄高光（见 shader），加法的总量本来就小得多，
+       所以这两个值再次下调：高光是「一小块亮」，不是「一圈亮」。 */
+    highlight: 0.95,
+    caustic: 0.40,
     // 圆角指数必须与 CSS 的 border-radius 一致，取 2（正圆弧）。
     //
     // 之前取 4.2（超椭圆，Apple 连续曲率）看着更"高级"，但它在对角方向上
@@ -97,7 +98,10 @@
     // 裁的，于是那 4px 的玻璃连同它的边缘高光一起露在卡片圆角之外 ——
     // 看上去就是"圆角没裁干净，还剩一点点"。
     cornerExp: 2.0,
-    edgeShade: 0.10,
+    /* 边缘吸收：越靠边越暗一点点。
+       这是「玻璃有厚度」的信号，而且方向和高光是**相反**的 ——
+       原来的写法整圈都在加亮，那就没有厚度，只有一圈白边。 */
+    edgeShade: 0.17,
     // 中频起伏的幅度。折射要有东西可弯才看得见，这一点点起伏就是
     // 「玻璃下面确实有东西」的来源。往上提一档，多一层可弯的细节。
     detail: 0.26,
@@ -153,6 +157,7 @@ uniform float     uBgMode;
 uniform vec2      uBgScale;
 uniform vec2      uBgOffset;
 uniform float     uOverlay;
+uniform float     uLightGlass;
 uniform vec3      uEnvAvg;
 uniform sampler2D tPhoto;
 uniform sampler2D tFrost;
@@ -251,8 +256,13 @@ vec3 bgAt(vec2 p, float widen) {
   }
   /* 压暗层夹在底图与玻璃之间 —— 所以放在这里而不是最后叠：
      玻璃折射到的应该是「已经压暗过的」背景，否则玻璃下面的画面
-     会比周围亮一档，边界立刻露馅。 */
-  return c * (1.0 - uOverlay);
+     会比周围亮一档，边界立刻露馅。
+
+     亮色玻璃是反过来的：暖白面板压在暗照片上会显得跳，
+     所以这里把底图**提亮**一档去接它，而不是继续压暗。
+     提亮要克制（1.14），过头照片就灰了。 */
+  float lift = (uBgMode > 0.5 && uLightGlass > 0.5) ? 1.14 : 1.0;
+  return c * (1.0 - uOverlay) * lift;
 }
 
 /* ---------- 全局跟手光晕 ----------
@@ -411,8 +421,23 @@ void main() {
       : auroraAt(vec2(uRes.x / uDpr * 0.5, uRes.y / uDpr * 0.5), 7.0);
     float envLum = dot(envAvg, vec3(0.2126, 0.7152, 0.0722));
 
-    vec3 spec = (envCol * 0.75 + envAvg * (0.35 + 0.65 * envLum)) * F * uHi;
-    vec3 caustic = (envCol * 0.6 + envAvg * 0.4) * pow(t, 3.0) * uCaustic;
+    /* 高光：窄的 Blinn-Phong，而不是整圈菲涅尔。
+       原来这里是 (envCol * 0.75 + ...) * F * uHi，而 F 在整圈边缘都趋近 1 ——
+       等于沿面板一圈都在加法叠白光，压在本来就亮的底上必然过曝，
+       实测观感就是「像相机曝光过度」，用户直接说「太丑了，像白内障」。
+       真正的玻璃不发光：它只在正对光源的那一小块地方有高光。
+       所以改成朝一个固定光源的窄高光（指数 110），
+       菲涅尔只留很轻的一点给边缘「存在感」。
+
+       注意：这段 GLSL 整体在 JS 模板字符串里，注释中**不能出现反引号**，
+       否则会提前把模板字符串截断，整段脚本语法错误、界面直接退回 CSS 版本。
+       这个坑已经踩过两次了。 */
+    vec3 Ldir = normalize(vec3(-0.42, 0.62, 0.66));
+    vec3 Vdir = vec3(0.0, 0.0, 1.0);
+    vec3 Hdir = normalize(Ldir + Vdir);
+    float narrow = pow(max(dot(N, Hdir), 0.0), 110.0);
+    vec3 spec = envAvg * narrow * uHi * 1.7;
+    vec3 caustic = (envCol * 0.6 + envAvg * 0.4) * F * 0.20 * uCaustic;
 
     vec3 tinted = mix(body, body * uTint.rgb, clamp(uTint.a, 0.0, 1.0));
     tinted += uTint.rgb * (uTint.a * 0.05 * envLum + uTint.a * 0.012);
@@ -434,7 +459,11 @@ void main() {
        只在照片模式生效 —— 极光那一路是调好的，一点不动。 */
     vec3 bodyTarget = envAvg * 1.02;
     float panelDim = 1.0;
-    if (uBgMode > 0.5) {
+    /* 亮色玻璃（浅色外观 + 照片底图）走另一条路：
+       面板要保持暖白，不能被压暗，也不能跟着底图走 ——
+       否则「浅色」又会变成一块深色玻璃，外观开关再次形同虚设。
+       对应地，底图会被提亮一档（见 bgAt），让暖白面板不至于显得跳。 */
+    if (uBgMode > 0.5 && uLightGlass < 0.5) {
       /* 比值要夹住。底图很暗时 envLum 接近 0，不夹的话这个比值会到 29 倍，
          把底图那一点点偏色一起放大成一块怪色（近黑但偏青的照片会变成满屏青）。
          夹到 6 倍足够把暗底面板提到该有的亮度，又不会放大色偏。 */
@@ -442,6 +471,9 @@ void main() {
                           / max(envLum, 0.015), 0.0, 6.0);
       bodyTarget = envAvg * ratio;
       panelDim = mix(0.86, 0.44, smoothstep(0.16, 0.78, envLum));
+    } else if (uLightGlass > 0.5) {
+      // 暖白玻璃：向亮部收敛，不是向底图收敛
+      bodyTarget = mix(envAvg, vec3(1.0, 0.985, 0.965), 0.72);
     }
     tinted = mix(tinted, bodyTarget, 0.10);
 
@@ -563,7 +595,7 @@ void main() {
       'uRes', 'uDpr', 'uTime', 'uBg0', 'uBg1', 'uBlob', 'uBlobCol', 'uGrain', 'uDetail', 'uDebug',
       'uIOR', 'uDisp', 'uEdge', 'uFrost', 'uWiden', 'uProbe', 'uHi', 'uCaustic',
       'uCorner', 'uEdgeShade', 'uTint', 'uPanelCount', 'uRect', 'uStyle',
-      'uBgMode', 'uBgScale', 'uBgOffset', 'uOverlay', 'uEnvAvg', 'tPhoto', 'tFrost',
+      'uBgMode', 'uBgScale', 'uBgOffset', 'uOverlay', 'uLightGlass', 'uEnvAvg', 'tPhoto', 'tFrost',
       'uGlowPos', 'uGlowAmt', 'uGlowCol',
     ].forEach((n) => { U[n] = gl.getUniformLocation(prog, n); });
 
@@ -967,6 +999,10 @@ void main() {
       gl.uniform2fv(U.uBgOffset, bg.offset);
       bg.overlay += (bg.overlayTarget - bg.overlay) * Math.min(1, dt * 1.6);
       gl.uniform1f(U.uOverlay, bg.overlay);
+      /* 亮色玻璃：浅色外观 + 照片底图。每帧重读 —— 切换外观时立刻生效，
+         不用等任何重绘。读 dataset 很便宜。 */
+      gl.uniform1f(U.uLightGlass,
+        (bg.mode === 1 && document.documentElement.dataset.mode === 'light') ? 1 : 0);
       gl.uniform3fv(U.uEnvAvg, bg.envAvg);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, bg.tex);

@@ -86,7 +86,14 @@ app.whenReady().then(async () => {
 
   const win = new BrowserWindow({
     width: 1440, height: 900, show: true, frame: false, transparent: true,
-    backgroundColor: '#00000000', hasShadow: true, titleBarStyle: 'hidden',
+    backgroundColor: '#00000000',
+    /* --noshadow：关掉系统投影。
+       Windows 的窗口投影是围着**矩形**窗口画的，不会跟着 CSS 圆角走 ——
+       透明窗口 + CSS 圆角这个组合下，它会在四条边和四个角外侧留下一圈
+       深色残留，看上去就是「边上有线、角是方的」。
+       .app 自己已经有一层跟着圆角走的 CSS 投影，所以关掉系统投影不丢东西。 */
+    hasShadow: !has('noshadow'),
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true, sandbox: false,
@@ -339,11 +346,17 @@ app.whenReady().then(async () => {
   // 先前多乘了一次，窗口 1440×900 只截出 1507×978（还被边界夹断）。
   const sz = img.getSize();
   const k = sz.width / disp.size.width;
+  /* --margin=N：把窗口外围 N 个 DIP 也拍进来。
+     默认只裁窗口矩形，于是窗口**外面**的东西全被裁掉 ——
+     而窗口投影、圆角外侧的残留正好都在外面，
+     查「边上有条线 / 角是方的」这类问题时，默认裁法根本看不到证据。 */
+  const marginFlag = FLAGS.find((f) => f.startsWith('--margin='));
+  const m = marginFlag ? (parseInt(marginFlag.split('=')[1], 10) || 0) : 0;
   const rect = {
-    x: Math.max(0, Math.round(b.x * k)),
-    y: Math.max(0, Math.round(b.y * k)),
-    width: Math.round(b.width * k),
-    height: Math.round(b.height * k),
+    x: Math.max(0, Math.round((b.x - m) * k)),
+    y: Math.max(0, Math.round((b.y - m) * k)),
+    width: Math.round((b.width + m * 2) * k),
+    height: Math.round((b.height + m * 2) * k),
   };
   rect.width = Math.min(rect.width, sz.width - rect.x);
   rect.height = Math.min(rect.height, sz.height - rect.y);

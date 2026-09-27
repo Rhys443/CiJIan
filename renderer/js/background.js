@@ -25,7 +25,12 @@
 
   const KEY = 'cijian.background.v1';
 
-  /* ---------- 预设底图：程序化绘制 ---------- */
+  /* ---------- 预设底图：程序化绘制 ----------
+     每张底图**自带一套主题色**（accent 系列）。
+     早先三张预设全部照抄同一套陶土橙 —— 林间配橙、夜色配橙，都不对。
+     这里给的不是「把橙色转一下色相」，而是完整的配色组：
+     填充（按钮渐变）/ 深色（浅底上的文字）/ 亮色（暗底上的文字）/ 光晕，
+     因为换了色相之后感知亮度会变，只给一个值会从别的缝里漏出橙色。 */
   const PALETTES = {
     dusk: {
       name: '黄昏',
@@ -34,6 +39,9 @@
       ridges: ['rgba(96,116,140,0.88)', 'rgba(58,74,98,0.94)', 'rgba(28,38,54,0.98)'],
       water: ['#43536B', '#2C3B50', '#141D2B'],
       warm: 1,
+      accent: { theme: '#CF6438', deep: '#A94A24', text: '#FFB184',
+                glow: 'rgba(207,100,56,.5)', soft: 'rgba(207,100,56,.16)',
+                line: 'rgba(207,100,56,.34)' },
     },
     forest: {
       name: '林间',
@@ -42,6 +50,9 @@
       ridges: ['rgba(74,96,78,0.88)', 'rgba(46,62,50,0.94)', 'rgba(24,34,28,0.98)'],
       water: ['#33463A', '#22322A', '#121C17'],
       warm: 0.35,
+      accent: { theme: '#4E8A3C', deep: '#33602A', text: '#9FD98A',
+                glow: 'rgba(78,138,60,.5)', soft: 'rgba(78,138,60,.16)',
+                line: 'rgba(78,138,60,.34)' },
     },
     night: {
       name: '夜色',
@@ -50,6 +61,9 @@
       ridges: ['rgba(48,62,92,0.9)', 'rgba(30,40,62,0.95)', 'rgba(16,22,36,0.98)'],
       water: ['#1A2438', '#121A2A', '#080C14'],
       warm: 0.0,
+      accent: { theme: '#3E6FC4', deep: '#2A4E93', text: '#8FC2FF',
+                glow: 'rgba(62,111,196,.5)', soft: 'rgba(62,111,196,.16)',
+                line: 'rgba(62,111,196,.34)' },
     },
   };
 
@@ -156,6 +170,15 @@
       const on = !!el;
       if (on) document.documentElement.dataset.bg = 'photo';
       else delete document.documentElement.dataset.bg;
+
+      /* 场景主题色：预设各自带一套强调色，由 data-scene 驱动 CSS 覆盖。
+         用户自己传的图没有配套配色，所以清掉这个属性、沿用默认。 */
+      if (cur.type === 'preset' && PALETTES[cur.id]) {
+        document.documentElement.dataset.scene = cur.id;
+      } else {
+        delete document.documentElement.dataset.scene;
+      }
+
       if (!optics) return;
       if (!el) { optics.clearBackground(); return; }
       optics.setBackground(el, isVideo);

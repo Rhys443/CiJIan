@@ -368,11 +368,14 @@
    但底图是照片，本身就可能很亮 —— 白纱叠亮底等于面板跟着亮，
    白字当场失去背衬。详见下面 --surface 那段。
 
-   刻意限定在 [data-bg="photo"] 下 —— 没设底图时仍然是程序化极光 + 暖纸，
-   浅色·暖纸 / 深色·暗房 / 空间·玻璃 三套主题各自原本的配色一点不动。
-   这样这次改版不会把任何一套主题原本的设计吃掉。
+   刻意限定在 [data-bg="photo"] 下，而且**排除浅色外观**。
+   浅色 + 底图 = 暖白玻璃 + 带一点棕的灰黑文字（沿用原来的 ink 系列）；
+   深色 / 空间 + 底图才走下面这套白字暗玻璃。
+
+   早先的写法是「只要设了底图就一律转深色」，理由是白字在任何照片上都读得出来。
+   代价是：用户选了「浅色·暖纸」，界面却是黑的 —— 外观开关形同虚设。
    ============================================================ */
-[data-bg="photo"] {
+[data-bg="photo"]:not([data-mode="light"]) {
   --bg: #10151f;
   --paper-050: #10151f;
   --paper-000: #1a2130;
@@ -451,6 +454,54 @@
   transition: none;
 }
 
+/* ============================================================
+   场景主题色 —— data-scene
+   ============================================================
+   三张预设底图各自带一套强调色：林间→绿、夜色→蓝、黄昏→暖橙。
+   早先三张全部照抄同一套陶土橙，林间配橙、夜色配橙都不对。
+
+   这里给的是**完整的一组**，不是「把橙色转个色相」：
+   --theme 是填充（主按钮渐变，上面压近白文字，所以必须够深）、
+   --theme-deep 是浅底上的文字色、--theme-text 由上面那几段按明暗分别指定、
+   --theme-glow / --theme-soft / --theme-line 是光晕与描边。
+   换色相之后感知亮度会变，只给一个值的话橙色会从别的缝里漏出来。
+
+   放在 glass.css 里，靠层叠顺序压过 tokens.css 的 [data-theme="move"] ——
+   场景比周期主题更「当下」，应该赢。 */
+[data-scene="forest"] {
+  --theme: #4E8A3C;
+  --theme-deep: #33602A;
+  --theme-glow: rgba(78, 138, 60, 0.5);
+  --theme-soft: rgba(78, 138, 60, 0.16);
+  --theme-line: rgba(78, 138, 60, 0.34);
+}
+[data-scene="night"] {
+  --theme: #3E6FC4;
+  --theme-deep: #2A4E93;
+  --theme-glow: rgba(62, 111, 196, 0.5);
+  --theme-soft: rgba(62, 111, 196, 0.16);
+  --theme-line: rgba(62, 111, 196, 0.34);
+}
+/* 黄昏就是默认那套暖橙，不用覆盖 —— 但显式写出来，
+   免得以后有人改了默认值，三张预设里有一张悄悄跟着变。 */
+[data-scene="dusk"] {
+  --theme: #CF6438;
+  --theme-deep: #A94A24;
+  --theme-glow: rgba(207, 100, 56, 0.5);
+  --theme-soft: rgba(207, 100, 56, 0.16);
+  --theme-line: rgba(207, 100, 56, 0.34);
+}
+/* 深色与照片深色模式下，场景色也要给一个提亮版本，
+   否则绿和蓝在暗底上比橙更沉，直接读不出来。 */
+[data-scene="forest"][data-mode="dark"],
+[data-scene="forest"]:not([data-mode="light"])[data-bg="photo"] {
+  --theme-text: #9FD98A;
+}
+[data-scene="night"][data-mode="dark"],
+[data-scene="night"]:not([data-mode="light"])[data-bg="photo"] {
+  --theme-text: #8FC2FF;
+}
+
 /* 侧栏在照片底上不再单独写一套 —— 上面那条通用规则已经把它和卡片对齐了。
    原来这里是硬编码的 rgba(10,14,20,0.42)，等于侧栏永远比卡片厚一档，
    正是「侧栏看起来和别的模块不一样」的来源之一。
@@ -464,17 +515,20 @@
    这里只改 --theme-text（文字与描边），**不动 --theme** ——
    主按钮的渐变背景用的是 --theme，上面压着近白文字，
    跟着提亮会把主按钮反过来毁掉。
-   色相保持不变，只把亮度提上来，三套主题的心情还是各自那一套。 */
-[data-bg="photo"] {
+   色相保持不变，只把亮度提上来，三套主题的心情还是各自那一套。
+
+   **同样要排除浅色**：浅色 + 底图是暖白玻璃，底色本来就是亮的，
+   把强调色提亮成 #ffb184 反而看不见了 —— 那里应该继续用偏深的 --theme-deep。 */
+[data-bg="photo"]:not([data-mode="light"]) {
   --theme-text: #ffc49a;
 }
-[data-bg="photo"][data-theme="move"] {
+[data-bg="photo"]:not([data-mode="light"])[data-theme="move"] {
   --theme-text: #ffb184;
 }
-[data-bg="photo"][data-theme="make"] {
+[data-bg="photo"]:not([data-mode="light"])[data-theme="make"] {
   --theme-text: #f0cd85;
 }
-[data-bg="photo"][data-theme="link"] {
+[data-bg="photo"]:not([data-mode="light"])[data-theme="link"] {
   --theme-text: #c9b6ea;
 }
 /* 空间主题本来就是冷色玻璃，提亮后沿用同一族色相。
@@ -482,6 +536,26 @@
    是个永远不会命中的选择器（已经踩过一次）。 */
 [data-bg="photo"][data-mode="spatial"] {
   --theme-text: #8ec5ff;
+}
+
+/* 浅色 + 底图：暖白玻璃，文字回到带一点棕的灰黑。
+   文字令牌不另写 —— 直接用 :root 的 ink 系列（#2a2320 / #3a312c / #4c423b），
+   本来就是暖调的灰黑。这里只把表面调实一点：底图是照片，
+   太薄会让文字压在杂乱的花纹上，读起来累。 */
+[data-bg="photo"][data-mode="light"] {
+  --surface: rgba(250, 245, 237, 0.90);
+  --surface-solid: #f8f3ec;
+  --surface-sunken: rgba(228, 214, 196, 0.46);
+  --text: #2a2320;
+  --text-soft: #3a312c;
+  --text-mute: #4c423b;
+  --text-faint: #6f6258;
+  --border: rgba(58, 49, 44, 0.13);
+  --border-strong: rgba(58, 49, 44, 0.22);
+  --separator: rgba(58, 49, 44, 0.11);
+  --separator-opaque: rgba(58, 49, 44, 0.17);
+  /* 浅底上强调色要往深走，与深色模式相反 */
+  --theme-text: var(--theme-deep);
 }
 
 /* 底图模式下三套外观仍然要能分辨。

@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -22,11 +22,21 @@ const REQUIRED_PLAN = {
 
 let mainWindow = null;
 
-/* 自己记最大化状态。
-   无边框 + 透明窗口在 Windows 上 isMaximized() 并不可靠：maximize() 之后
-   立刻查往往还是 false。于是 toggle 永远走 maximize 分支 ——
-   现象就是「只能最大化，回不到原来的大小」。改成只信事件。 */
-let maximizedFlag = false;
+/* 最大化 / 还原完全手写，不用 maximize() / unmaximize()。
+   ────────────────────────────────────────────────────────────
+   frame:false + transparent:true 的窗口在 Windows 上**根本不被当作可最大化窗口管理**。
+   dev/win-test.js 量出来的结果：
+
+                       maximize() 之后                    unmaximize() 之后
+     透明无边框        bounds 撑到 0,0 1708×1020，          bounds 纹丝不动，
+                       但 isMaximized() 仍是 false          卡在最大化
+     普通无边框(对照)  isMaximized() = true                 回到 133,59 1440×902
+
+   也就是说 maximize 事件压根不发 —— 早期那版「只信事件」的 maximizedFlag
+   永远是 false，点按钮永远走 maximize 分支。这就是「只能最大化，回不到正常大小」。
+   改成自己记正常尺寸 + setBounds()，行为完全确定。 */
+let isMaximized = false;
+let normalBounds = null;
 
 function createWindow() {
   // 窗口/任务栏图标：打包后由 exe 自带，开发期显式指定
@@ -59,7 +69,13 @@ function createWindow() {
     // 那个前提不成立了，所以这里重新启用。
     transparent: true,
     backgroundColor: '#00000000',
-    hasShadow: true,
+    /* 关掉系统投影。
+       Windows 是围着**矩形窗口**画投影的，不会跟着 CSS 的 border-radius 走 ——
+       透明窗口 + CSS 圆角这个组合下，它会在四条边和四个角外侧留下一圈深色残留，
+       看上去就是「左边有一条竖线、圆角是方的」，而且三套外观上都有（不是主题问题）。
+       A/B 截图对比过：关掉之后边界干净，只留 CSS 圆角。
+       不丢东西 —— .app 自己已经有一层跟着圆角走的 CSS 投影，系统那层是重复的。 */
+    hasShadow: false,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 16, y: 18 },
     ...(fs.existsSync(iconPath) ? { icon: iconPath } : {}),
@@ -78,14 +94,8 @@ function createWindow() {
     mainWindow.show();
   });
 
-  mainWindow.on('maximize', () => {
-    maximizedFlag = true;
-    mainWindow.webContents.send('window:state', { maximized: true });
-  });
-  mainWindow.on('unmaximize', () => {
-    maximizedFlag = false;
-    mainWindow.webContents.send('window:state', { maximized: false });
-  });
+  /* 注意：maximize / unmaximize 事件在这个窗口上不会触发（见文件上方说明），
+     所以这里不再监听它们 —— 状态由 toggleMaximize 自己维护。 */
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -100,13 +110,24 @@ function createWindow() {
 ipcMain.handle('window:minimize', () => mainWindow && mainWindow.minimize());
 ipcMain.handle('window:toggleMaximize', () => {
   if (!mainWindow) return false;
-  // 用自己维护的状态，不用 isMaximized()（见文件上方说明）
-  if (maximizedFlag) mainWindow.unmaximize();
-  else mainWindow.maximize();
-  return maximizedFlag;
+
+  /* 取窗口当前所在那块屏的工作区，而不是主屏 ——
+     双屏时窗口在副屏上，铺满主屏的工作区会把窗口搬到另一块屏去。 */
+  const area = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
+
+  if (isMaximized) {
+    if (normalBounds) mainWindow.setBounds(normalBounds);
+    isMaximized = false;
+  } else {
+    normalBounds = mainWindow.getBounds();
+    mainWindow.setBounds({ x: area.x, y: area.y, width: area.width, height: area.height });
+    isMaximized = true;
+  }
+  mainWindow.webContents.send('window:state', { maximized: isMaximized });
+  return isMaximized;
 });
 ipcMain.handle('window:close', () => mainWindow && mainWindow.close());
-ipcMain.handle('window:isMaximized', () => Boolean(mainWindow) && maximizedFlag);
+ipcMain.handle('window:isMaximized', () => Boolean(mainWindow) && isMaximized);
 
 ipcMain.handle('app:version', () => ({
   app: app.getVersion(),
