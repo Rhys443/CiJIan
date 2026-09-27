@@ -289,6 +289,10 @@ WebGL2 不可用时自动退回原来的 CSS 极光（`?optics=0` 可强制走�
 压在上面的半透明玻璃。不设底图时仍然是程序化极光 —— 那是原来就调好的一档，
 不设底图时一点不动。
 
+![底图 · 黄昏预设](docs/screenshots/background-dusk.jpg)
+
+![底图 · 夜色预设（打卡页）](docs/screenshots/background-checkin.jpg)
+
 - **三张程序化预设**（黄昏 / 林间 / 夜色）用 Canvas 现画，不占仓库体积、
   不依赖网络、永远加载成功。它们只是「开箱即用」的兜底，真正好看的是用户自己传的图。
 - **上传支持图片（jpg/png/webp/gif/bmp）与视频（mp4/webm/mov/m4v）**，
