@@ -242,6 +242,22 @@
   padding-top: var(--sp-6);
 }
 
+/* 悬浮层的透光率。
+   .modal 用的是 --surface-solid（暖纸下是**完全不透明**的 #f8f3ec），
+   .toast 更是写死的 rgba(42,35,32,0.92) —— 两者都会把背后的玻璃整个挡住，
+   于是这两块"最该像玻璃"的东西反而一点玻璃感都没有。
+   它们都在 PANEL_SELECTOR 里，着色器已经画好了玻璃，只是被自己那层底色盖住。
+   这里把底色让开，让折射透上来；文字仍然读得清，因为模糊由着色器提供。 */
+[data-optics="webgl"] .modal {
+  background-color: color-mix(in srgb, var(--surface-solid) 70%, transparent);
+}
+[data-optics="webgl"] .toast {
+  background-color: rgba(42, 35, 32, 0.62);
+}
+[data-optics="webgl"][data-bg="photo"] .toast {
+  background-color: rgba(16, 20, 28, 0.58);
+}
+
 /* ============================================================
    不要顶栏。
    整个界面只分左右两块：左边工具栏 + 右边内容区。

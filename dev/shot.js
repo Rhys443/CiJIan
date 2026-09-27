@@ -293,6 +293,22 @@ app.whenReady().then(async () => {
     await wait(1200);
   }
 
+  /* 悬浮层是这次改版的重点之一，但它们在截图里默认不会出现 ——
+     必须主动打开。取值自带在开关里（--modal=3），
+     不要走位置参数：位置参数已经被 preset 占着，
+     少传一个 preset 就会整体左移，天数静默变成别的值。 */
+  const modalFlag = FLAGS.find((f) => f === '--modal' || f.startsWith('--modal='));
+  if (modalFlag) {
+    const n = parseInt(modalFlag.split('=')[1] || '3', 10) || 3;
+    await win.webContents.executeJavaScript(`window.Router.openDay(${n}); 'ok'`);
+    await wait(1400);
+  }
+  if (has('toast')) {
+    await win.webContents.executeJavaScript(
+      `window.UI.toast('底图换好了，这是悬浮层的样子', '🖼'); 'ok'`);
+    await wait(700);
+  }
+
   // 抬到最前，确保抓屏抓到的是它
   win.moveTop();
   win.focus();
