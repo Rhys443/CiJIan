@@ -1,0 +1,86 @@
+# ============================================================
+#  打 tag 即发布
+#
+#  为什么用 Actions 而不是本机打包上传：
+#    portable exe 约 100 MB，超过 GitHub 仓库的**单文件 100 MB 上限**，
+#    所以它不能进仓库，只能作为 Release 附件 —— 而本机没有 gh CLI、
+#    也没有 GITHUB_TOKEN，建不了 Release。
+#    Actions 里的 GITHUB_TOKEN 是自动注入的，于是"打 tag → 出 Release"
+#    完全不需要任何本地凭据，以后每次发版都是一条命令。
+#
+#  用法：
+#    npm version 0.3.1 --no-git-tag-version   （或手改 package.json）
+#    git commit -am "v0.3.1"
+#    git tag v0.3.1 && git push origin main v0.3.1
+#    → 几分钟后 https://github.com/Rhys443/CiJIan/releases/latest 就有新版
+#
+#  也可以在 Actions 页面手动 Run workflow（workflow_dispatch）。
+# ============================================================
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write          # 建 Release 需要写权限
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 用 ci 而不是 install：锁文件在仓库里，构建才可复现
+      - name: 安装依赖
+        run: npm ci
+
+      # 关掉 electron-builder 的代码签名（没有证书，签名会让它去下载 winCodeSign）
+      - name: 打包 portable exe
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: 列出产物（排查用）
+        run: dir dist
+        shell: cmd
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          fail_on_unmatched_files: true
+          name: 此间 ${{ github.ref_name }} · 玻璃材质与主题探索（Demo）
+          body: |
+            > **这是 Demo**，不是成品软件 —— 用来演示这一版在**玻璃材质**与
+            > **主题系统**上的探索。双击即用，不需要安装。
+
+            ### 下载
+            | | |
+            |---|---|
+            | 文件 | `Cijian-*-portable.exe`（约 100 MB，免安装单文件） |
+            | 系统 | Windows 10 / 11 64 位 |
+            | 数据 | 全部存在本机（`%APPDATA%\Cijian`），不联网、不上传 |
+            | 卸载 | 删掉 exe 即可 |
+
+            ⚠️ 未做代码签名，SmartScreen 可能提示「未知发布者」——
+            点「更多信息」→「仍要运行」。这是 Demo 的正常状态。
+
+            ### 这一版做了什么
+            - **玻璃**：边缘剖面从四分之一圆换成 smootherstep（两端一阶二阶导为 0），
+              边缘明暗从"边界上的台阶"换成"贴边为 0 的鼓包"——
+              这两条才是「玻璃砖接缝 / 有直角」的真正来源。
+            - **极光模式换材质**：没有底图时卡片去掉玻璃，改「微微透光 + 一点点高斯模糊」，
+              侧栏保留玻璃当分界。
+            - **模糊可调**：设置 → 外观 → 强调色下面那根滑杆。
+            - **主题一条链**：底图决定背景并自带推荐强调色 → 强调色可手动覆盖 → 明暗只管厚薄。
+            - **TODAY 卡 → 日历**：按下缩小、松手弹出一整块日历（15 天范围、今天第几天、任务池），
+              全程连续变形，从哪来回哪去。
+
+            完整说明见 [README](https://github.com/Rhys443/CiJIan#readme)。
