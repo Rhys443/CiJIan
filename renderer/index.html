@@ -19,6 +19,8 @@
     <link rel="stylesheet" href="css/surfaces.css" />
     <link rel="stylesheet" href="css/spatial.css" />
     <link rel="stylesheet" href="css/glass.css" />
+    <!-- 日历弹层：从 TODAY 卡长出来的那一块，排在最后，避免被上面的覆盖规则抢走 -->
+    <link rel="stylesheet" href="css/calendar.css" />
     <!-- 必须排在 glass.css 之后：glass.css 里那组 [data-optics="webgl"]
          覆盖规则是靠层叠顺序赢的，新表插在前面会被它压掉。 -->
     <link rel="stylesheet" href="css/background.css" />
@@ -100,6 +102,8 @@
     <script src="js/ui.js"></script>
     <script src="js/background.js"></script>
     <script src="js/optics.js"></script>
+    <script src="js/adaptive.js"></script>
+    <script src="js/calendar.js"></script>
     <script src="js/ambient.js"></script>
     <script src="js/light.js"></script>
     <script src="js/glass.js"></script>

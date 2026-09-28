@@ -12,7 +12,8 @@
    逐行移植过来的，不是另写一套近似：
 
      · SDF 圆角轮廓（Lp 范数，指数 2 = 圆角矩形，约 4.2 = Apple 连续曲率）
-     · 贝塞尔剖面 G(t) = a·t − (a−e)·t² ,  a = 6 − 2e
+     · 边缘剖面 H(u)：四分之一圆与 smootherstep 之间插值（liquid = 1），
+       两端一阶二阶导都为 0 —— 表面贴着边界切线方向起来，没有折角
      · 斯涅尔折射，玻璃 n = 1.52，R/G/B 三个波长各自算一次 → 真实色散
      · 环境采样菲涅尔：高光颜色取自背景反射方向，F0 = ((n−1)/(n+1))²
      · 中心不变形 / 内圈压缩 / 外圈反向，三区由同一条剖面自然导出
@@ -79,8 +80,35 @@
     /* 色散加大：这是「玻璃感」最直接的来源。
        原来 0.012 在中心区域几乎看不出分色，玻璃读起来像一块模糊的塑料。 */
     dispersion: 0.030,
-    edgeSlope: 0.92,
+
+    /* ============ 边缘剖面：形状参数 ============
+       这四个值是在范例 cijian-v18-demo.html 里逐个拉定的，用户已确认：
+
+         liquid      液态程度：剖面在「四分之一圆」与「smootherstep」之间插值
+         spanRatio   鼓起范围：占面板短边的比例
+         height      鼓起高度：表面最高点相对边界的高差（css px）
+         edgeShade   边缘厚度：贴边那一圈压暗的强度
+
+       **liquid 必须取满 1.0。**
+       计划文档里记的滑杆值是 0.08，但那个值在数学上做不到「去掉直角」：
+       剖面是 mix(brick, smootherstep, liquid)，而 brick = sqrt(1-(1-u)^2)
+       在 u=0（正好在轮廓上）的导数是**无穷**，只要 liquid < 1，
+       这一项就仍然在，表面照样以 90 度撞上边界 —— 那正是用户说的「直角」。
+       所以这里按「结构性修改」那一条取纯 smootherstep：
+       两端一阶、二阶导都为 0，边界处切线水平，没有折点。 */
+    liquid: 1.0,
+    spanRatio: 0.30,
+    spanRange: [8, 260],
+    height: 17,
+    /* 边缘压暗从 0.17 收到 0.07（用户拉定的值）。
+       它现在是一圈**贴边为 0** 的鼓包，不再是边界上的一道台阶 —— 见 shader。 */
+    edgeShade: 0.07,
+
     frost: 0.62,
+    /* 上面那对 frost 值现在只是**兜底**：真实取值由用户那根滑杆决定
+       （见 frostWidth() / frostMix()，50 正好落回 160 / 0.62）。
+       留在这里是为了 Store 还没初始化时有个合理缺省。 */
+    frostPhoto: 0.62,
     /* 毛玻璃的加宽半径。调小 = 折射采样更贴近原图 = 变形更锐利、更「玻璃」。 */
     frostWiden: 2.15,
     probe: 96,
@@ -98,19 +126,11 @@
     // 裁的，于是那 4px 的玻璃连同它的边缘高光一起露在卡片圆角之外 ——
     // 看上去就是"圆角没裁干净，还剩一点点"。
     cornerExp: 2.0,
-    /* 边缘吸收：越靠边越暗一点点。
-       这是「玻璃有厚度」的信号，而且方向和高光是**相反**的 ——
-       原来的写法整圈都在加亮，那就没有厚度，只有一圈白边。 */
-    edgeShade: 0.17,
     // 中频起伏的幅度。折射要有东西可弯才看得见，这一点点起伏就是
     // 「玻璃下面确实有东西」的来源。往上提一档，多一层可弯的细节。
     detail: 0.26,
-    /* 每个面板的倒角与厚度按短边比例推算，再夹到合理区间。
-       倒角收窄 = 折射集中在更靠边的一圈 = 边缘的「掰弯」更陡、更强烈，
-       这正是「玻璃控件周围有极其强烈的折射」想要的形状：
-       原来 0.17 的倒角摊得太开，形变被稀释成一整片的轻微扭曲，反而看不出来。 */
-    bezelRatio: 0.115,
-    bezelRange: [10, 44],
+    /* 折射厚度。与「鼓起范围」分开：范围决定形状铺多宽，
+       厚度决定同样的倾角能把背景掰弯多少。 */
     thicknessRatio: 0.30,
     thicknessRange: [24, 120],
     tint: [1, 1, 1, 0.05],
@@ -169,7 +189,8 @@ uniform vec3  uGlowCol;
 
 uniform float uIOR;
 uniform float uDisp;
-uniform float uEdge;
+uniform float uLiquid;
+uniform float uHeight;
 uniform float uFrost;
 uniform float uWiden;
 uniform float uProbe;
@@ -181,7 +202,7 @@ uniform vec4  uTint;
 
 uniform int   uPanelCount;
 uniform vec4  uRect[MAXP];    // xy = 中心, zw = 半宽高（css px）
-uniform vec4  uStyle[MAXP];   // x = 圆角, y = 倒角宽度, z = 厚度, w = 染色强度
+uniform vec4  uStyle[MAXP];   // x = 圆角, y = 鼓起范围, z = 折射厚度, w = 染色强度
 
 float hash21(vec2 q) {
   return fract(sin(dot(q, vec2(12.9898, 78.233))) * 43758.5453);
@@ -278,7 +299,18 @@ vec3 addGlow(vec2 p, vec3 c) {
      观感是「屏幕上有一块过曝」，不是「有个东西在发光」。
      收小之后它才像一束光，而不是一片白雾。 */
   float g = exp(-(r * r) / (105.0 * 105.0));
-  return c + uGlowCol * (g * uGlowAmt);
+
+  /* 按「还剩多少余量」给光。
+     这是加法叠加，而极光模式的底本来就接近白（纸色约 0.9），
+     再直接加 0.62 会超过 1 被**夹断成纯白** —— 那一块就是用户说的
+     「跟随鼠标的光有点曝光」，字也被一起冲掉。
+     所以先看这一点当前有多亮，只给它剩下来的余量（留一成安全余量，
+     免得底色估偏一点就又顶到 100%）。
+
+     暗房底约 0.1，余量接近 0.9，光几乎不打折 —— 所以这一条
+     实际上只改极光，其他档位的观感不动。 */
+  float head = clamp(1.0 - max(max(c.r, c.g), c.b), 0.0, 1.0) * 0.9;
+  return c + uGlowCol * (g * uGlowAmt * head);
 }
 
 /* ---------- SDF ---------- */
@@ -298,13 +330,41 @@ vec2 sdGrad(vec2 p, vec2 b, float r, float n) {
   return vec2(dx, dy) / (2.0 * e);
 }
 
-/* ---------- 剖面斜率 ----------
-   G(0) = 0    → 与中央平面相切，中心区域光学上是平的
-   G 先增后减  → 位移量先增后减，映射折叠，外圈因此反向
-   G(1) = e > 0 → 外沿仍有真实倾角，菲涅尔边缘才立得住 */
-float bezelSlope(float t, float e) {
-  float a = 6.0 - 2.0 * e;
-  return a * t - (a - e) * t * t;
+/* ---------- 边缘剖面：形状 ----------
+   参数 u 是「离轮廓的距离 / 鼓起范围」：
+     u = 0 正好在轮廓上，u = 1 在鼓起范围的内端。
+
+   两条剖面按 liquid 插值：
+
+     brick   = 四分之一圆 sqrt(1 - (1-u)^2)
+               u=0 处导数**无穷** → 表面以 90 度撞上边界。
+               圆角本身是圆的，但撞击角度是硬的，看上去就是「玻璃砖接缝」。
+
+     liquidP = smootherstep u^3 (6u^2 - 15u + 10)
+               u=0 与 u=1 处一阶、二阶导都为 0 →
+               表面以切线方向贴着边界起来，一路平滑拱到中心，全程没有折点。
+
+   这一对函数就是「四棱台」那道棱的根：不是圆角不够圆，是切线方向不对。 */
+float profileHeight(float u, float liquid) {
+  u = clamp(u, 0.0, 1.0);
+  float brick   = sqrt(max(0.0, 1.0 - (1.0 - u) * (1.0 - u)));
+  float liquidP = u * u * u * (u * (u * 6.0 - 15.0) + 10.0);
+  return mix(brick, liquidP, liquid);
+}
+
+/* dH/du —— 解析式，不另外做差分：
+   位置对法线方向的距离求导就是 ∇dist（SDF 的解析梯度 gdir），
+   所以 tanPhi = (height / span) * profileSlope(u)。
+
+   两端都为 0，这就是「边界上没有折角」的数学表达。
+   注意 brick 的导数在 u=0 是无穷：只要 liquid < 1，
+   这一项就仍然带着那条直角 —— 所以 liquid 必须取满 1。 */
+float profileSlope(float u, float liquid) {
+  u = clamp(u, 0.0, 1.0);
+  float s = 1.0 - u;
+  float brickD   = s / max(sqrt(max(1.0 - s * s, 1e-6)), 1e-3);
+  float liquidD  = 30.0 * u * u * s * s;
+  return mix(brickD, liquidD, liquid);
 }
 
 /* ---------- 斯涅尔折射 ----------
@@ -334,12 +394,14 @@ void main() {
     vec2 pc = p - rc.xy;
     vec2 hs = rc.zw;
 
-    float bez = max(st.y, 1.0);
-    float T   = max(st.z, 1.0);
+    float span = max(st.y, 1.0);
+    float T    = max(st.z, 1.0);
 
-    // 包围盒提前退出：绝大多数像素不在某块面板里，
-    // 用 4 次比较换掉一次 SDF 求值，是这个着色器最划算的优化。
-    float lim = bez + 8.0;
+    /* 包围盒提前退出：绝大多数像素不在某块面板里。
+       lim 只需要覆盖抗锯齿的那一两个像素 —— 面板**外面**的像素
+       紧接着就会被 d > 0 挡掉，把 lim 开到 span 那么大
+       （30% 短边之后最大能到两百多）只会让更多无关像素白跑一次 SDF。 */
+    float lim = 8.0;
     if (abs(pc.x) > hs.x + lim || abs(pc.y) > hs.y + lim) continue;
 
     float d = sdPanel(pc, hs, st.x, uCorner);
@@ -350,41 +412,47 @@ void main() {
     float dist = -d / gm;
     vec2 gdir = g / gm;
 
-    float t = clamp(dist / bez, 0.0, 1.0);
+    /* u = 离轮廓的距离 / 鼓起范围。
+       u=0 在轮廓上，u=1 在鼓起范围的内端 —— 与剖面的参数方向一致。
 
-    /* dist 是「离轮廓的距离」，所以 dist/B 在轮廓处是 0、往里走才变大 ——
-       而剖面要求 t=1 在轮廓、t=0 在倒角内缘。这里必须取反。
+       这一行原来写的是 t = clamp(dist / bez) 再取反，
+       后果是整个面板内部被钳在 t=1：斜率恒为常数，等于内部整体平移一段，
+       而轮廓处反而变平 —— 菲涅尔、焦散、边缘压暗三处全都落在面板正中
+       而不是边上。数学没错，是把参数接到了曲面错误的一端。 */
+    float u = clamp(dist / span, 0.0, 1.0);
 
-       这一行原先写成 t = dist/bez（C++ 原型里也是），后果是整个面板内部
-       t 被钳在 1：斜率恒为 e，等于内部整体平移一段，而轮廓处反而变平 ——
-       菲涅尔、焦散、边缘压暗三处全都落在面板正中而不是边上。
-       数学没错，是把参数接到了曲面错误的一端。 */
-    t = 1.0 - t;
-
-    // 表面法线：剖面沿外法线方向下降，所以上方法线向外倾
-    float tanPhi = (T / bez) * bezelSlope(t, uEdge);
+    /* 表面法线：剖面高度沿外法线方向下降，所以上方法线向外倾。
+       tanPhi 是表面的真实倾角（对距离求导），
+       不再乘厚度 —— 厚度只负责「同样的倾角能掰弯多少背景」，
+       见下面的 refractOffset。形状与厚度混在一起正是前几轮
+       怎么调都调不干净的原因之一。 */
+    float tanPhi = (uHeight / span) * profileSlope(u, uLiquid);
     vec3 N = normalize(vec3(gdir * tanPhi, 1.0));
 
     /* ---------- 三区自检（?optics=zones / offset / normal）----------
-       把剖面直接画出来，而不是靠肉眼猜。分界点 t* = a / (2(a-e)) 是
-       位移沿 t 的极值点：
-         t < t*   位移随 t 递增 → 采样点被越推越深 → 内圈压缩
-         t > t*   位移随 t 递减 → 采样点折返   → 外圈反向
+       把剖面直接画出来，而不是靠肉眼猜。
+       分界点 u = 0.5 是 smootherstep 导数 30u^2(1-u)^2 的极值点：
+         u < 0.5   位移随 u 递增 → 采样点被越推越深 → 内圈压缩
+         u > 0.5   位移随 u 递减 → 采样点折返   → 外圈反向
        这条分界完全由这一条剖面决定，不是另外调的三个效果。 */
     if (uDebug > 0.5) {
       vec3 z;
-      if (uDebug > 2.5) {
+      if (uDebug > 3.5) {
+        z = vec3(u);                                          // 剖面参数 u：贴边 0 → 内端 1
+      } else if (uDebug > 2.5) {
         z = N * 0.5 + 0.5;                                    // 表面法线
       } else if (uDebug > 1.5) {
         vec2 off = refractOffset(N, 1.0 / uIOR, T);           // 位移矢量
         z = vec3(clamp(abs(off) / 70.0, 0.0, 1.0), 1.0);
       } else {
-        float a = 6.0 - 2.0 * uEdge;
-        float slopeRate = a - 2.0 * (a - uEdge) * t;          // dG/dt
-        if (t < 0.14)             z = vec3(0.92, 0.24, 0.24); // 中心：光学平坦
-        else if (slopeRate > 0.0) z = vec3(0.18, 0.88, 0.36); // 内圈：压缩
-        else                      z = vec3(0.24, 0.48, 1.00); // 外圈：反向
+        if (u < 0.14)      z = vec3(0.92, 0.24, 0.24);        // 贴边：切线水平，光学上几乎平坦
+        else if (u < 0.50) z = vec3(0.18, 0.88, 0.36);        // 内圈：压缩
+        else               z = vec3(0.24, 0.48, 1.00);        // 外圈：反向
       }
+      // u 场单独一路：**不掺背景**，纯值输出。
+      // 掺了背景就看不出「这一像素到底有没有被面板覆盖」——
+      // 而覆盖范围正是查「边上那条带子」时唯一要知道的事。
+      if (uDebug > 3.5) { col = vec3(u); break; }
       col = mix(col, z, 0.90);
       break;
     }
@@ -480,8 +548,20 @@ void main() {
     }
     tinted = mix(tinted, bodyTarget, 0.10);
 
-    float edge = smoothstep(0.55, 1.0, t);
-    tinted *= mix(1.0, 1.0 - uEdgeShade, edge);
+    /* ---------- 边缘厚度：贴边为 0 的鼓包 ----------
+       原来是 mix(1.0, 1.0 - uEdgeShade, smoothstep(0.55, 1.0, t))：
+       它在轮廓上（t=1）等于 1 - uEdgeShade，而面板**外面**没有这个系数 ——
+       边界两侧差了 uEdgeShade 那么多亮度，那是一条明暗上的台阶。
+       轮廓再顺滑也消不掉它，因为它根本不是形状问题。
+
+       现在改成两端都为 0 的鼓包：贴边 0 → 稍进一点最深 → 再往里回到 0。
+       跨过边界时亮度连续，看不出接缝，但玻璃仍然有「边的厚度」。
+
+       它同时是窗口左缘那条灰带的根：侧栏贴着窗口左缘，
+       面板边界与窗口边界重合，那圈台阶在别处只是一圈描边，
+       在这里就是一整条 8-10px 的竖带。 */
+    float ridge = smoothstep(0.0, 0.22, u) * (1.0 - smoothstep(0.22, 0.70, u));
+    tinted *= 1.0 - uEdgeShade * ridge;
 
     vec3 gcol = (tinted + spec + caustic) * panelDim;
 
@@ -596,7 +676,7 @@ void main() {
     const U = {};
     [
       'uRes', 'uDpr', 'uTime', 'uBg0', 'uBg1', 'uBlob', 'uBlobCol', 'uGrain', 'uDetail', 'uDebug',
-      'uIOR', 'uDisp', 'uEdge', 'uFrost', 'uWiden', 'uProbe', 'uHi', 'uCaustic',
+      'uIOR', 'uDisp', 'uLiquid', 'uHeight', 'uFrost', 'uWiden', 'uProbe', 'uHi', 'uCaustic',
       'uCorner', 'uEdgeShade', 'uTint', 'uPanelCount', 'uRect', 'uStyle',
       'uBgMode', 'uBgScale', 'uBgOffset', 'uOverlay', 'uLightGlass', 'uEnvAvg', 'tPhoto', 'tFrost',
       'uGlowPos', 'uGlowAmt', 'uGlowCol',
@@ -631,6 +711,34 @@ void main() {
       lastFrame: -1,
     };
 
+    /* 极光（无底图）的压暗层。
+       **极光是特别例外**：它整块底就是那张暖纸，压暗只会把它变成脏灰 ——
+       浅色下压到 0.10 就够（原来的 0.30 让 #e6dbca 变成 #a1998d，
+       实测就是它把整屏读成了灰）。
+       暗房与空间不动：那两档本来就该是暗底，0.30 / 0.34 是调好的。 */
+    function auroraOverlay() {
+      const m = document.documentElement.dataset.mode;
+      if (m === 'light') return 0.10;
+      if (m === 'spatial') return 0.34;
+      return 0.30;
+    }
+
+    /* 底图（照片 / 视频）的压暗层，按外观分档：
+         浅色 → 固定 0.25（用户定的值）
+         深色 → 在自适应值上**再加深 10%**（照片在暗房里要更沉一点）
+         空间 → 保持原来的自适应，不动
+       自适应那一档是「照片太亮时压一点，好让白字读得出来」，
+       0.05–0.16 随底图亮度走 —— 和极光那条是两件事。 */
+    function photoOverlay() {
+      const lum = 0.2126 * bg.envAvg[0] + 0.7152 * bg.envAvg[1] + 0.0722 * bg.envAvg[2];
+      const t = clamp((lum - 0.18) / (0.75 - 0.18), 0, 1);
+      const adapt = 0.05 + 0.11 * (t * t * (3 - 2 * t));
+      const m = document.documentElement.dataset.mode;
+      if (m === 'light') return 0.25;
+      if (m === 'dark') return Math.min(0.9, adapt + 0.10);
+      return adapt;
+    }
+
     function makeTex() {
       const t = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, t);
@@ -645,7 +753,27 @@ void main() {
     bg.cv = document.createElement('canvas');
     bg.cx = bg.cv.getContext('2d', { willReadFrequently: true });
 
-    const FROST_W = 160;
+    /* ============ 玻璃模糊程度：交给用户 ============
+       设置页「外观」里那根滑杆，0–100，50 是原来的标准。
+
+       玻璃的模糊在 WebGL 模式下**完全在着色器里**（backdrop-filter 是关掉的），
+       由两个旋钮共同决定：
+         frostW    毛玻璃那张降采样图的宽度 —— 图越小，放大回来越糊
+         frostMix  毛玻璃在玻璃本体里的占比 —— 越大越少露出锐利的折射
+       两个一起走，滑杆推到底就是"明显更糊但仍然有形状"。
+
+       以前这两个值是写死的，而且有底图时自动加一档 ——
+       那是"我替你判断"；现在改成一根明确的旋钮：
+       底图细节多、读起来吃力的时候，自己往右拉一格就行。
+       两端都留了余量：0 不是全清晰（262），100 也不是糊成一片（60）。 */
+    function blurLevel() {
+      const st = global.CJ && global.CJ.Store && global.CJ.Store.state &&
+                 global.CJ.Store.state.settings;
+      const v = st && typeof st.glassBlur === 'number' ? st.glassBlur : 50;
+      return clamp(v, 0, 100) / 100;
+    }
+    function frostWidth() { return Math.round(260 - 200 * blurLevel()); }
+    function frostMix() { return 0.44 + 0.36 * blurLevel(); }
 
     /* 取背景源的真实像素尺寸。
        必须分类型取：<canvas> 既没有 naturalWidth 也没有 videoWidth，
@@ -688,6 +816,7 @@ void main() {
         return;
       }
 
+      const FROST_W = frostWidth();
       const fh = Math.max(1, Math.round(FROST_W * h / w));
       if (bg.cv.width !== FROST_W || bg.cv.height !== fh) {
         bg.cv.width = FROST_W; bg.cv.height = fh;
@@ -720,16 +849,9 @@ void main() {
       /* 压暗层跟着底图亮度走：底图越亮压得越多。
          递推目标是连续值，渲染循环里再平滑逼近 ——
          视频每帧都会重算均值，直接赋值会让压暗层跟着画面忽明忽暗。
-
-         **整体压得很轻**（0.05 – 0.16）。原来给到 0.20 – 0.48，
-         本意是「把背景压暗好让白字读得出来」，代价是整屏蒙上一层深灰，
-         用户原话是「特别暗，特别脏，像盖了一层深灰色滤镜」。
-         现在这件事交给自适应文字去做（文字自己按底下的明暗换色），
-         背景保持原样 —— 这才回得到「白净透亮」。 */
+         分档规则见 photoOverlay()。 */
       if (!bg.overlayLocked) {
-        const lum = 0.2126 * bg.envAvg[0] + 0.7152 * bg.envAvg[1] + 0.0722 * bg.envAvg[2];
-        const t = clamp((lum - 0.18) / (0.75 - 0.18), 0, 1);
-        bg.overlayTarget = 0.05 + 0.11 * (t * t * (3 - 2 * t));
+        bg.overlayTarget = photoOverlay();
       }
 
       // cover 映射：与 CSS object-fit:cover 等价，居中裁切
@@ -806,8 +928,22 @@ void main() {
          updatePanelRects() —— 每帧更新矩形（便宜），玻璃才能跟着
                               视图入场动画一起移动
        只查一次的话，路由切换时量到的是上一页的矩形，甚至量到空的。 */
+    /* 极光 + 浅色这一种组合下，卡片**不参与光学层**。
+       理由：玻璃的三样东西（折射位移 / 白色内高光 / 边缘压暗）
+       压在暖白上是互相抵消的 —— 高光把颜色冲淡、压暗又把亮度拉回，
+       净效果只剩一层灰。那一档改用「微微透光 + 一点点高斯模糊」的哑光材质
+       （见 glass.css 的 .mat-aurora 一段）。
+       **侧栏保留**：它贴窗口左缘、背后永远有光在动，玻璃在那里成立，
+       而且它成了左右两侧的分界。
+       其余任何组合（浅色 + 有底图 / 暗房 / 空间）一行都不走这条路。 */
+    function auroraLight() {
+      return document.documentElement.dataset.mode === 'light' && bg.mode === 0;
+    }
+
     function queryPanelEls() {
-      panelEls = Array.prototype.slice.call(document.querySelectorAll(PANEL_SELECTOR));
+      let list = Array.prototype.slice.call(document.querySelectorAll(PANEL_SELECTOR));
+      if (auroraLight()) list = list.filter((el) => el.classList.contains('rail'));
+      panelEls = list;
       // 圆角几乎不变，随元素一起缓存，省掉每帧的 getComputedStyle
       panelEls.forEach((el) => {
         const cs = getComputedStyle(el);
@@ -841,14 +977,18 @@ void main() {
         const p = panels[i];
         const r = p.r;
         const short = Math.min(r.width, r.height);
-        const bezel = clamp(short * GLASS.bezelRatio, GLASS.bezelRange[0], GLASS.bezelRange[1]);
+        /* 鼓起范围：短边的 30%（用户拉定的值）。
+           它同时是剖面的「作用半径」—— 隆起从边界往里铺这么宽。
+           原来的倒角只有短边的 11.5%，折射挤在很窄的一圈里，
+           那一圈与旁边的落差就是肉眼看到的那条线。 */
+        const span = clamp(short * GLASS.spanRatio, GLASS.spanRange[0], GLASS.spanRange[1]);
         const thick = clamp(short * GLASS.thicknessRatio, GLASS.thicknessRange[0], GLASS.thicknessRange[1]);
         rects[i * 4 + 0] = r.left + r.width / 2;
         rects[i * 4 + 1] = r.top + r.height / 2;
         rects[i * 4 + 2] = r.width / 2;
         rects[i * 4 + 3] = r.height / 2;
         styles[i * 4 + 0] = p.radius;
-        styles[i * 4 + 1] = bezel;
+        styles[i * 4 + 1] = span;
         styles[i * 4 + 2] = thick;
         styles[i * 4 + 3] = 1;
       }
@@ -902,6 +1042,12 @@ void main() {
       // 主题色：极光模式下光晕跟着它走
       const t = parseColor(root.getPropertyValue('--theme'));
       if (t) themeCol = t.slice(0, 3);
+
+      // 压暗层跟着外观走：极光 10%（浅色）/ 30%（暗房）/ 34%（空间）；
+      // 有底图时走 photoOverlay()（浅色 0.25、深色自适应 +0.10）
+      if (!bg.overlayLocked) {
+        bg.overlayTarget = bg.mode === 0 ? auroraOverlay() : photoOverlay();
+      }
     }
 
     /* 光晕颜色按当前底决定，每帧算一次（很便宜）。
@@ -983,8 +1129,9 @@ void main() {
       gl.uniform1f(U.uDebug, debugMode);
       gl.uniform1f(U.uIOR, GLASS.ior);
       gl.uniform1f(U.uDisp, GLASS.dispersion);
-      gl.uniform1f(U.uEdge, GLASS.edgeSlope);
-      gl.uniform1f(U.uFrost, GLASS.frost);
+      gl.uniform1f(U.uLiquid, GLASS.liquid);
+      gl.uniform1f(U.uHeight, GLASS.height);
+      gl.uniform1f(U.uFrost, frostMix());
       gl.uniform1f(U.uWiden, GLASS.frostWiden);
       gl.uniform1f(U.uProbe, GLASS.probe);
       gl.uniform1f(U.uHi, GLASS.highlight);
@@ -1101,6 +1248,10 @@ void main() {
       refresh() {
         if (!running) return;
         resize();
+        /* 底图是静态图片时，纹理只在 needsUpload 时重传一次 ——
+           而模糊滑杆改了降采样图的尺寸，必须让它重传，
+           否则拖动滑杆画面不动（只有视频会每帧重传，不受影响）。 */
+        if (bg.mode === 1 && !bg.isVideo) bg.needsUpload = true;
         // 底色不是读一次就完事，接着盯一会儿（见 draw 里的说明）
         bgWatch = 1.4;
       },
@@ -1129,12 +1280,19 @@ void main() {
       /** 退回程序化极光 */
       clearBackground() {
         bg.el = null; bg.mode = 0;
-        // 极光有一档自己调好的压暗（0.30）；底图的自适应值不能留着
-        if (!bg.overlayLocked) bg.overlayTarget = 0.30;
+        // 极光有自己的压暗档位（浅色几乎为 0、暗房 0.30）；底图的自适应值不能留着
+        if (!bg.overlayLocked) bg.overlayTarget = auroraOverlay();
       },
 
-      /** 压暗层强度（规格里的 L1） */
-      setOverlay(v) { bg.overlayLocked = true; bg.overlay = clamp(v, 0, 0.9); },
+      /* 压暗层强度（规格里的 L1）。
+         **必须同时写 overlay 与 overlayTarget**：渲染循环每帧都在把
+         overlay 往 overlayTarget 插值，只写 overlay 的话下一帧就被拉回去了 ——
+         这个 bug 让截图工具的 --overlay0 一直是空操作（画面毫无变化）。 */
+      setOverlay(v) {
+        bg.overlayLocked = true;
+        bg.overlay = clamp(v, 0, 0.9);
+        bg.overlayTarget = bg.overlay;
+      },
 
       get hasBackground() { return bg.mode === 1; },
 
@@ -1177,6 +1335,25 @@ void main() {
           parsedBg: lastBg,
           candidates: panelEls.length,
           picked: panels.length,
+          /* 毛玻璃那张降采样图的宽度与它在玻璃本体里的占比 ——
+             「模糊提高一个层级」调的就是这两个数，光看画面量不出来。 */
+          frostW: frostWidth(),
+          frostMix: +frostMix().toFixed(3),
+          blurSetting: (global.CJ && global.CJ.Store && global.CJ.Store.state &&
+                        global.CJ.Store.state.settings.glassBlur),
+          overlay: +bg.overlayTarget.toFixed(3),
+          /* 真正送进着色器的几何。
+             查「玻璃的位置和 DOM 对不上」这类问题时，
+             看 getBoundingClientRect 是没用的 —— 要看的是这一刻的 uRect/uStyle。 */
+          panelRects: panels.map((p) => ({
+            cls: String(p.r && panelEls[p.idx] ? panelEls[p.idx].className : '?').slice(0, 30),
+            rect: [p.r.left, p.r.top, p.r.width, p.r.height].map((v) => +v.toFixed(1)),
+            radius: p.radius,
+            span: +clamp(Math.min(p.r.width, p.r.height) * GLASS.spanRatio,
+                         GLASS.spanRange[0], GLASS.spanRange[1]).toFixed(1),
+            thick: +clamp(Math.min(p.r.width, p.r.height) * GLASS.thicknessRatio,
+                          GLASS.thicknessRange[0], GLASS.thicknessRange[1]).toFixed(1),
+          })),
           radii: blobs.map((b) => Math.round(b.r)),
           weights: blobs.map((b) => +b.w.toFixed(3)),
         };

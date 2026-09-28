@@ -445,6 +445,108 @@
   flex: none;
 }
 
+/* ---------- 玻璃模糊滑杆（设置页·外观，在色块下面） ----------
+   它和强调色是同一件事（界面长什么样），所以收在颜色下面、**同宽**。
+   整行铺开会横跨整个卡片，太长了。 */
+.accent-col {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  width: 364px;
+  max-width: 100%;
+}
+.blur-wrap { width: 100%; }
+.blur-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.blur-tag {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.blur-slider-box {
+  position: relative;
+  flex: 1;
+  min-width: 90px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+}
+/* 槽：一条浅底色胶囊 */
+.blur-base,
+.blur-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 11px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.blur-base {
+  width: 100%;
+  background: color-mix(in srgb, var(--ink-900) 13%, transparent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+/* 划过的一段：**白色胶囊 + 主题色描边**。
+   它是一个独立的元素而不是背景色块 —— 背景层没法单独圆角，
+   右端会是直边，看起来就是"一块方块卡在槽里"。
+   宽度按圆钮的真实行程算：圆钮中心从 10px 走到 宽−10px，
+   所以 填充 = 10px + (宽 − 20px) × 比例。用背景色块时两边会对不齐。 */
+.blur-fill {
+  width: calc(10px + (100% - 20px) * var(--fill-ratio, 0.5));
+  background: #fffdfa;
+  box-shadow: inset 0 0 0 1.5px var(--theme);
+  transition: width 120ms var(--e-out);
+}
+
+.blur-slider {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  margin: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+/* 原生轨道让位给上面那两个元素，只留圆钮 */
+.blur-slider::-webkit-slider-runnable-track {
+  height: 11px;
+  background: transparent;
+  box-shadow: none;
+}
+/* 圆钮：**纯主题色**，压在白色那一段上，是整条里最重的一点 */
+.blur-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--theme);
+  box-shadow: 0 1px 4px rgba(74, 55, 38, 0.34);
+  transition: transform var(--d-fast) var(--e-overshoot);
+}
+.blur-slider:hover::-webkit-slider-thumb { transform: scale(1.12); }
+.blur-slider:active::-webkit-slider-thumb { transform: scale(1.04); }
+.blur-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--theme-soft), 0 1px 4px rgba(74, 55, 38, 0.34);
+}
+.blur-out {
+  flex: none;
+  min-width: 26px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: right;
+}
+
 .seg {
   display: inline-flex;
   padding: 3px;
@@ -529,6 +631,44 @@
 }
 .theme-opt__glyph {
   font-size: 22px;
+}
+
+/* ---------- 强调色：8 个小圆点 ----------
+   七色 + 自动挤在一行里，用 .theme-picker 的三列网格会被拉得很高，
+   所以这一行单独排成 8 等分。圆点自己带颜色（写死不取 --theme），
+   否则所有点都会显示成"当前"那一个颜色，等于什么都没说。 */
+.theme-picker.accent-picker,
+.theme-picker:has(.accent-opt) {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+.accent-opt {
+  padding: var(--sp-3) var(--sp-2);
+  text-align: center;
+}
+.accent-opt .theme-opt__name {
+  margin-top: 6px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+.accent-opt__dot {
+  width: 22px;
+  height: 22px;
+  margin: 0 auto;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+.accent-opt[data-accent="red"] .accent-opt__dot { background: #c8433a; }
+.accent-opt[data-accent="orange"] .accent-opt__dot { background: #cf6438; }
+.accent-opt[data-accent="yellow"] .accent-opt__dot { background: #d8a63a; }
+.accent-opt[data-accent="green"] .accent-opt__dot { background: #4e8a3c; }
+.accent-opt[data-accent="cyan"] .accent-opt__dot { background: #2e8a8a; }
+.accent-opt[data-accent="blue"] .accent-opt__dot { background: #3e6fc4; }
+.accent-opt[data-accent="purple"] .accent-opt__dot { background: #7d6a8f; }
+/* 「自动」= 跟着底图，所以它是一圈把所有色相都含进来的环 */
+.accent-opt[data-accent="auto"] .accent-opt__dot {
+  background: conic-gradient(#c8433a, #cf6438, #d8a63a, #4e8a3c, #2e8a8a, #3e6fc4, #7d6a8f, #c8433a);
 }
 .theme-opt__name {
   margin-top: 7px;

@@ -78,7 +78,7 @@
     // ?optics=zones|offset|normal 把光学中间量画出来，用于自检。
     const opticsParam =
       (global.location.search.match(/[?&]optics=([a-z0-9]+)/) || [])[1] || '';
-    const OPTICS_DEBUG = { zones: 1, offset: 2, normal: 3 };
+    const OPTICS_DEBUG = { zones: 1, offset: 2, normal: 3, u: 4 };
     const forceCss = opticsParam === '0';
     if (!forceCss && opticsCanvas && global.Optics && global.Optics.isSupported()) {
       optics = global.Optics.create({
@@ -104,10 +104,22 @@
       const bgLayer = global.Background.create({ optics: optics, store: global.Store });
       bgLayer.restore();
       global.Router.background = bgLayer;
+      /* 底图挂上之后再算一次强调色。
+         restore() 里面就可能已经 apply() 过一轮，而那一刻
+         Router.background 还没赋值（上面这行在后），算出来的是兜底色 ——
+         少了这一句，预设底图要等到下一次换页才配上它该有的颜色。 */
+      global.Router.applyTheme();
     }
 
     // 凝光光效：给所有 data-light 表面挂上四层光影与跟手弥散光
     global.Light.init(document);
+
+    /* 面板外文字的自适应取色。
+       必须排在 Router.init() 之后、第一帧渲染完之后才会有效果，
+       所以它自己内部是 rAF 调度的，这里是"开一个常驻的观察者"。
+       它是「去掉那层灰」的另一半：背景不再为了白字而压暗，
+       文字自己按底下的明暗换色。 */
+    if (global.Adaptive) global.Adaptive.init();
 
     /* 粘滞：照片、勋章、小卡片跟着鼠标轻微偏移 + 放大。
        用事件委托，所以只需要开一次，之后路由重建的 DOM 自动生效。 */

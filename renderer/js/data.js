@@ -238,6 +238,14 @@
       s.settings = Object.assign({
         mode: 'light', reminderTime: '09:00', streakReminder: true,
         reduceMotion: false, sound: false, skipRest: true,
+        /* 强调色：'auto' = 跟着底图（没底图时跟着周期主题那一档）。
+           具体值是 red/orange/yellow/green/cyan/blue/purple 之一。
+           它是**界面颜色唯一的来源** —— 周期主题不再改颜色。 */
+        accent: 'auto',
+        /* 玻璃模糊程度 0–100（设置页「外观」那一行的滑杆）。
+           50 = 原来的标准。底图细节多的时候自己往右拉 ——
+           白字压在玻璃上被底下的细节干扰就不好读了。 */
+        glassBlur: 50,
       }, (s.settings && typeof s.settings === 'object') ? s.settings : {});
       if (!Array.isArray(s.checkins)) s.checkins = [];
       if (!Array.isArray(s.archived)) s.archived = [];
@@ -298,6 +306,12 @@
           reduceMotion: false,
           sound: false,
           skipRest: true,
+          /* 这两个是「界面长什么样」的那一组设置。
+             **种子状态必须和 normalize() 的默认值保持一致** ——
+             这里不走 normalize，漏一个就会在设置页显示成 undefined
+             （glassBlur 就这么漏过一次）。 */
+          accent: 'auto',
+          glassBlur: 50,
         },
         activeCycleId: 'cyc-1',
         cycles: [
@@ -386,6 +400,12 @@
           reduceMotion: false,
           sound: false,
           skipRest: true,
+          /* 这两个是「界面长什么样」的那一组设置。
+             **种子状态必须和 normalize() 的默认值保持一致** ——
+             这里不走 normalize，漏一个就会在设置页显示成 undefined
+             （glassBlur 就这么漏过一次）。 */
+          accent: 'auto',
+          glassBlur: 50,
         },
         activeCycleId: 'cyc-blank',
         cycles: [

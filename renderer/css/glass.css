@@ -218,8 +218,18 @@
 /* 关键之二：板面自己要让出透光率。
    .card / .panel 默认用 --surface（0.86 alpha 的相纸白）当底色，
    几乎不透光 —— 折射画得再准也会被这层盖住，等于白做。
-   这里按同一比例把每块表面调薄，颜色关系仍然由各自的令牌决定，
-   所以三套外观不需要分别写死颜色。 */
+
+   **但「让开」不等于「让一点点」。**
+   原来这里只把 0.86 乘到 72%（约 0.60 的白），实际效果仍然是
+   「底图上面盖了一张半透明白纸」，折射只剩下一成的可见度：
+   观感就是浅色页面整体发灰发脏，玻璃里那点扭曲根本看不见。
+   用户的原话是：不能把液态玻璃单纯**叠加**在底图上，
+   要把底图**融合进**玻璃的扭曲效果里。
+
+   所以这里收到 26% / 30%（约 0.22 的白）：面板的材料感全部交给
+   片元着色器 —— 折射、磨砂、边缘厚度都在那边算，
+   DOM 这一层只负责「文字底下有一点点背衬」。
+   照片底图那条路径单独保留厚一些（白字必须有背衬，见下面）。 */
 [data-optics="webgl"] .card,
 [data-optics="webgl"] .panel,
 [data-optics="webgl"] .hero,
@@ -231,7 +241,23 @@
 [data-optics="webgl"] .rail-card,
 [data-optics="webgl"] .print-stage,
 [data-optics="webgl"] .write-block {
-  background-color: color-mix(in srgb, var(--surface) 72%, transparent);
+  background-color: color-mix(in srgb, var(--surface) 26%, transparent);
+}
+
+/* 照片底图：白字压在亮照片上必须有背衬，所以这里让得少一些。
+   背衬的另一半由着色器按底图亮度自适应给出（见 panelDim）。 */
+[data-optics="webgl"][data-bg="photo"] .card,
+[data-optics="webgl"][data-bg="photo"] .panel,
+[data-optics="webgl"][data-bg="photo"] .hero,
+[data-optics="webgl"][data-bg="photo"] .review-hero,
+[data-optics="webgl"][data-bg="photo"] .stat,
+[data-optics="webgl"][data-bg="photo"] .summary,
+[data-optics="webgl"][data-bg="photo"] .trace,
+[data-optics="webgl"][data-bg="photo"] .ring-block,
+[data-optics="webgl"][data-bg="photo"] .rail-card,
+[data-optics="webgl"][data-bg="photo"] .print-stage,
+[data-optics="webgl"][data-bg="photo"] .write-block {
+  background-color: color-mix(in srgb, var(--surface) 62%, transparent);
 }
 
 /* 侧栏按 HIG 是 regular 变体，本来就比卡片更实一点，所以留得厚一些 */
@@ -245,10 +271,13 @@
      底图在它后面几乎看不见，而卡片一直是正常的。
      这个坑很隐蔽：改颜色的写法看起来完全正确，肉眼看也只像是「侧栏材质厚一点」。 */
   background-image: none;
-  background-color: color-mix(in srgb, var(--surface) 72%, transparent);
+  background-color: color-mix(in srgb, var(--surface) 30%, transparent);
   /* 顶栏取消之后侧栏直接顶到窗口上沿，--sp-5 显得太高、整块文字贴着上边缘。
      退回 --sp-6，让它在圆角里落下来一点。 */
   padding-top: var(--sp-6);
+}
+[data-optics="webgl"][data-bg="photo"] .rail {
+  background-color: color-mix(in srgb, var(--surface) 62%, transparent);
 }
 
 /* 悬浮层的透光率。
@@ -265,6 +294,53 @@
 }
 [data-optics="webgl"][data-bg="photo"] .toast {
   background-color: rgba(16, 20, 28, 0.58);
+}
+
+/* ============================================================
+   极光 + 浅色：卡片换「哑光材质」，玻璃只留侧栏
+   ============================================================
+   **生效条件只有一种**：没有底图（极光） + 浅色。
+   浅色但有底图（照片 / 视频）、暗房、空间，这三档一行都不动。
+
+   为什么换：玻璃的三样东西（折射位移 / 白色内高光 / 边缘压暗）
+   压在暖白上是互相抵消的 —— 高光把颜色冲淡、压暗又把亮度拉回，
+   用户看到的就是「整个面太灰了」。
+   哑光材质只做两件事：**微微透光**（alpha）+ **一点点高斯模糊**（blur），
+   所以背后那几团暖光会在卡片底下糊成一片很淡的暖色 ——
+   有材质感，但不脏。
+
+   侧栏不换：它贴窗口左缘、背后永远有光在动，玻璃在那里成立，
+   而且它成了左右两侧的分界。
+
+   注意 backdrop-filter 要带 !important：上面的「光学层接管」那段
+   把所有面板的 backdrop-filter 都关掉了（那是为 WebGL 让路的），
+   这一档既然不走光学层，就得把模糊要回来。 */
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .card,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .panel,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .hero,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .review-hero,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .stat,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .summary,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .trace,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .ring-block,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .rail-card,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .print-stage,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .write-block,
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .shot-picker {
+  background-color: rgba(255, 253, 250, 0.46);
+  backdrop-filter: blur(16px) saturate(1) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    0 1px 2px rgba(74, 55, 38, 0.05), 0 10px 24px -14px rgba(74, 55, 38, 0.16);
+}
+/* 极光 + 浅色时，按钮与芯片也一起去掉折射与描边，跟着哑光走 */
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .is-glass::before {
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+html:not([data-bg])[data-mode="light"][data-optics="webgl"] .is-glass::after {
+  background: none;
+  box-shadow: none;
 }
 
 /* ============================================================
@@ -455,48 +531,19 @@
 }
 
 /* ============================================================
-   场景主题色 —— data-scene
+   场景强调色 —— **已经整体撤掉，改由 data-accent 统一负责**
    ============================================================
-   三张预设底图各自带一套强调色：林间→绿、夜色→蓝、黄昏→暖橙。
-   早先三张全部照抄同一套陶土橙，林间配橙、夜色配橙都不对。
+   这里原来有三段 [data-scene="forest"|"night"|"dusk"]，各自写一套 --theme。
+   问题是它和周期主题的 [data-theme]、以及照片模式下的
+   [data-bg="photo"] 三方都在往同一批令牌上写，靠层叠优先级分胜负 ——
+   结果就是「面板绿了、标题还是橙的」这种半身不遂的样子（已经踩过两次）。
 
-   这里给的是**完整的一组**，不是「把橙色转个色相」：
-   --theme 是填充（主按钮渐变，上面压近白文字，所以必须够深）、
-   --theme-deep 是浅底上的文字色、--theme-text 由上面那几段按明暗分别指定、
-   --theme-glow / --theme-soft / --theme-line 是光晕与描边。
-   换色相之后感知亮度会变，只给一个值的话橙色会从别的缝里漏出来。
-
-   放在 glass.css 里，靠层叠顺序压过 tokens.css 的 [data-theme="move"] ——
-   场景比周期主题更「当下」，应该赢。 */
-[data-scene="forest"] {
-  --theme: #4E8A3C;
-  --theme-deep: #33602A;
-  --theme-hi: #9FD98A;      /* 暗底上用这个 */
-  --theme-glow: rgba(78, 138, 60, 0.5);
-  --theme-soft: rgba(78, 138, 60, 0.16);
-  --theme-line: rgba(78, 138, 60, 0.34);
-}
-[data-scene="night"] {
-  --theme: #3E6FC4;
-  --theme-deep: #2A4E93;
-  --theme-hi: #8FC2FF;
-  --theme-glow: rgba(62, 111, 196, 0.5);
-  --theme-soft: rgba(62, 111, 196, 0.16);
-  --theme-line: rgba(62, 111, 196, 0.34);
-}
-/* 黄昏就是默认那套暖橙，不用覆盖 —— 但显式写出来，
-   免得以后有人改了默认值，三张预设里有一张悄悄跟着变。 */
-[data-scene="dusk"] {
-  --theme: #CF6438;
-  --theme-deep: #A94A24;
-  --theme-hi: #FFB184;
-  --theme-glow: rgba(207, 100, 56, 0.5);
-  --theme-soft: rgba(207, 100, 56, 0.16);
-  --theme-line: rgba(207, 100, 56, 0.34);
-}
-/* 场景给的是三个值（填充 / 亮底文字 / 暗底文字），
-   「用哪一个」由模式决定 —— 见下面 [data-bg="photo"] 与 tokens.css 的暗色块。
-   所以这里不再需要按模式分别写死 --theme-text，那一版正是优先级打架的来源。 */
+   现在只有一个来源：documentElement 上的 data-accent（见 tokens.css）。
+   JS 按一条链算出它到底是什么：
+     底图 → 自带一个推荐色相（林间绿 / 夜色蓝 / 黄昏橙 / 用户照片取其均色）
+     强调色 → 手动值时直接覆盖上面那个推荐值
+     明暗   → 只决定取哪一档（--theme-deep / --theme-hi），不改色相
+   场景这个概念还有用（它决定底图配什么颜色），但它不再直接写 CSS 令牌。 */
 
 /* 侧栏在照片底上不再单独写一套 —— 上面那条通用规则已经把它和卡片对齐了。
    原来这里是硬编码的 rgba(10,14,20,0.42)，等于侧栏永远比卡片厚一档，

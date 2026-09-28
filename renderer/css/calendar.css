@@ -1,0 +1,333 @@
+/* ============================================================
+   此间 · 日历（js/calendar.js 的样式）
+
+   尺寸全部由 JS 按卡片矩形算，所以这里的 .cal-panel 不写死宽高 ——
+   动画每一帧都在改 left/top/width/height，写死了就会被覆盖。
+
+   里面用**容器查询**跟着面板真实宽度重排：
+   窄的时候（刚脱离卡片那一瞬）3 列，长开了变 5 列并显示星期、
+   任务池从竖排变横排。所以宽度连续变的时候，它看起来就是连续展开的，
+   而不是"到位之后换一套界面"。
+   ============================================================ */
+
+.cal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms var(--e-out);
+}
+.cal-layer.is-on {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 背景模糊：0 → 9px + 一层很轻的暗。
+   注意这里**不能**用 backdrop-filter 的 transition —— 它在 Chromium 里
+   插值不平滑，会一跳到位。用类切换 + 整体淡入，观感更稳。 */
+.cal-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(38, 30, 24, 0.20);
+}
+.cal-layer.is-blur .cal-scrim {
+  backdrop-filter: blur(9px) saturate(1.06);
+  -webkit-backdrop-filter: blur(9px) saturate(1.06);
+}
+
+.cal-panel {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface-solid) 97%, transparent);
+  box-shadow: 0 30px 80px -24px rgba(38, 30, 24, 0.5);
+  container-type: inline-size;
+  opacity: 0;
+  transition: opacity 160ms linear;
+}
+.cal-panel.is-on { opacity: 1; }
+
+.cal__x {
+  position: absolute;
+  right: 10px;
+  top: 9px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(42, 35, 32, 0.06);
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cal__x:hover { background: rgba(42, 35, 32, 0.12); }
+
+.cal__body {
+  padding: 14px 14px 12px;
+  color: var(--text);
+  opacity: 0;
+  transition: opacity 180ms linear;
+}
+.cal-panel.is-on .cal__body {
+  opacity: 1;
+  transition-delay: 80ms;
+}
+.cal__k {
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--text-faint);
+}
+.cal__h {
+  margin: 5px 0 2px;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.cal__s {
+  margin: 0 0 11px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.cal-frame {
+  border: 1.5px solid var(--theme-line);
+  border-radius: 11px;
+  padding: 8px 8px 10px;
+  background: color-mix(in srgb, var(--paper-000) 62%, transparent);
+}
+.cal-frame__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9.5px;
+  color: var(--text-faint);
+  margin-bottom: 7px;
+  line-height: 1.5;
+}
+.cal-frame__top b {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* 15 天：窄的时候 3 列（刚长出来那一瞬） */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.cal-day {
+  position: relative;
+  border-radius: 8px;
+  padding: 5px 6px 6px;
+  background: var(--paper-000);
+  border: 1px solid var(--border);
+}
+.cal-day__n {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-style: normal;
+  color: var(--text-faint);
+}
+.cal-day__d {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.cal-day__w {
+  display: block;
+  font-size: 8.5px;
+  color: var(--text-faint);
+}
+.cal-day__s {
+  position: absolute;
+  right: 5px;
+  top: 4px;
+  font-size: 9.5px;
+  font-style: normal;
+}
+.cal-day.is-done { background: color-mix(in srgb, var(--moss-400) 22%, var(--paper-000)); }
+.cal-day.is-done .cal-day__s { color: var(--moss-500); }
+.cal-day.is-today {
+  border-color: var(--theme);
+  box-shadow: 0 0 0 2px var(--theme-soft);
+}
+.cal-day.is-rest { background: color-mix(in srgb, var(--paper-200) 45%, var(--paper-000)); }
+.cal-day.is-future { opacity: 0.5; }
+
+.cal-prog { margin-top: 11px; }
+.cal-prog__bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(42, 35, 32, 0.09);
+}
+.cal-prog__in {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--theme), var(--theme-deep));
+}
+.cal-prog__pin {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--theme-deep);
+}
+.cal-prog__legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--text-faint);
+  margin-top: 5px;
+}
+
+.cal-pool {
+  margin-top: 11px;
+  border-top: 1px solid var(--separator);
+  padding-top: 9px;
+}
+.cal-pool__h {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.cal-pool__h b { font-family: var(--font-serif); font-size: 12.5px; }
+.cal-pool__h span { font-size: 9.5px; color: var(--text-faint); }
+
+.cal-chips { display: flex; flex-direction: column; gap: 5px; }
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--paper-000);
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms var(--e-overshoot), border-color 160ms var(--e-out);
+}
+.cal-chip:hover { transform: translateX(2px); }
+.cal-chip.is-on {
+  border-color: var(--theme);
+  box-shadow: 0 0 0 2px var(--theme-soft);
+  color: var(--text);
+}
+.cal-chip i { font-style: normal; font-size: 13px; }
+.cal-chip b { font-weight: 600; }
+.cal-chip .cal-chip__d { margin-left: auto; font-size: 9.5px; color: var(--text-faint); }
+.cal-chip.is-dash { border-style: dashed; }
+
+.cal-cust {
+  display: none;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  background: var(--paper-000);
+}
+.cal-cust.is-on { display: block; }
+.cal-cust textarea {
+  width: 100%;
+  min-height: 50px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--paper-050);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.7;
+  resize: vertical;
+}
+.cal-cust__hint { margin-top: 6px; font-size: 9.5px; color: var(--text-faint); line-height: 1.6; }
+.cal-cust__row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.cal-tpl {
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--paper-000);
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.cal__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 9.5px;
+  color: var(--text-faint);
+}
+
+/* ============================================================
+   长开了之后：同一套 DOM 跟着宽度重新排
+   ============================================================ */
+@container (min-width: 330px) {
+  .cal__body { padding: 20px 24px 16px; }
+  .cal__k { font-size: 10.5px; }
+  .cal__h { font-size: 21px; margin: 8px 0 3px; }
+  .cal__s { font-size: 12px; margin-bottom: 15px; }
+  .cal__x { right: 12px; top: 11px; width: 28px; height: 28px; font-size: 14px; }
+
+  .cal-frame { padding: 13px 14px 15px; border-radius: 14px; }
+  .cal-frame__top { font-size: 11.5px; margin-bottom: 11px; }
+  .cal-frame__top b { font-size: 12.5px; }
+  .cal-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; }
+  .cal-day { padding: 8px 10px 9px; border-radius: 11px; min-height: 56px; }
+  .cal-day__n { font-size: 10px; }
+  .cal-day__d { font-size: 16px; }
+  .cal-day__w { font-size: 10.5px; }
+  .cal-day__s { right: 8px; top: 7px; font-size: 12px; }
+
+  .cal-prog { margin-top: 14px; }
+  .cal-prog__bar { height: 7px; }
+  .cal-prog__pin { height: 15px; }
+  .cal-prog__legend { font-size: 11px; margin-top: 7px; }
+
+  .cal-pool { margin-top: 15px; padding-top: 12px; }
+  .cal-pool__h { margin-bottom: 10px; }
+  .cal-pool__h b { font-size: 14.5px; }
+  .cal-pool__h span { font-size: 11px; }
+  .cal-chips { flex-direction: row; gap: 9px; }
+  .cal-chip {
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 9px 11px;
+    border-radius: 12px;
+    font-size: 12px;
+  }
+  .cal-chip i { font-size: 18px; }
+  .cal-chip b { font-size: 12.5px; }
+  .cal-chip .cal-chip__d { margin-left: 0; font-size: 10px; }
+  .cal-cust { padding: 13px 14px; border-radius: 13px; }
+  .cal-cust textarea { min-height: 58px; font-size: 12px; }
+  .cal-cust__hint { font-size: 11px; }
+  .cal-tpl { font-size: 11.5px; padding: 6px 11px; }
+  .cal__foot { font-size: 11px; margin-top: 13px; }
+}
+@container (min-width: 520px) {
+  .cal-day { min-height: 60px; }
+  .cal-day__d { font-size: 17px; }
+}

@@ -69,43 +69,157 @@
       ])
     );
 
-    /* --- 主题 --- */
-    const themeRow = h('div', { class: 'theme-picker' });
-    THEMES.forEach((t) => {
-      themeRow.appendChild(
-        h(
-          'button',
-          {
-            class: `theme-opt${cycle.theme === t.id ? ' on' : ''}`,
-            style: { '--tc': t.accent },
-            onclick: () => {
-              cycle.theme = t.id;
-              cycle.keyword = t.name;
-              Store.save();
-              ctx.applyTheme();
-              ctx.rerender();
-              global.UI.toast(`主题切换到「${t.name}」`, t.glyph);
-            },
+    /* --- 周期主题 ---
+        用户原话：「我不需要 3 个板块来负责同一个页面的主题色问题。」
+        颜色那一半早就搬去「外观」板块了；**任务池这一半也搬走了** ——
+        它现在在左下角 TODAY 卡点开的日历里。
+        理由：它和日历回答的是同一件事（这一轮在练什么、走到哪了），
+        是同一条链上的信息；设置页只留真正的配置。
+        （之前这里是 themeRow 那一整块选主题的 UI，现在整个撤掉。） */
+
+    /* --- 外观：一个板块，三行 ---
+        强调色 / 明暗 / 底图 —— 三者是一条链，不是三件互不相干的事：
+          底图决定背景，并自带一个推荐强调色；
+          强调色可以手动覆盖它（「自动」就是听底图的）；
+          明暗只决定玻璃厚薄与取色档位，不再决定颜色。 */
+    const ACCENTS = [
+      ['auto', '自动'],
+      ['red', '红'],
+      ['orange', '橙'],
+      ['yellow', '黄'],
+      ['green', '绿'],
+      ['cyan', '青'],
+      ['blue', '蓝'],
+      ['purple', '紫'],
+    ];
+    const accentRow = h('div', { class: 'theme-picker' });
+    ACCENTS.forEach(([id, label]) => {
+      const on = (settings.accent || 'auto') === id;
+      accentRow.appendChild(
+        h('button', {
+          class: `theme-opt accent-opt${on ? ' on' : ''}`,
+          dataset: { accent: id },
+          title: id === 'auto' ? '跟着底图走（没底图时跟着周期主题）' : label,
+          onclick: () => {
+            settings.accent = id;
+            Store.save();
+            ctx.applyTheme();
+            // 只换一行选中态，不整页重画：重画会把滚动位置也一起弹回去
+            accentRow.querySelectorAll('.accent-opt').forEach((n) => {
+              n.classList.toggle('on', n.dataset.accent === id);
+            });
+            global.UI.toast(id === 'auto' ? '强调色改为跟着底图' : `强调色换成${label}`, '✦');
           },
-          h('div', { class: 'theme-opt__glyph', text: t.glyph }),
-          h('div', { class: 'theme-opt__name', text: t.name }),
-          h('div', { class: 'theme-opt__desc', text: t.category })
-        )
+        }, h('div', { class: 'accent-opt__dot' }), h('div', { class: 'theme-opt__name', text: label }))
       );
     });
 
-    box.appendChild(
-      card('周期主题', [
-        field('当前主题', `「${theme.name}」· ${theme.tagline}　切换主题后，抽卡会从新的任务池里抽，已经收藏的相纸不受影响。`, themeRow),
-      ])
-    );
+    const bgControl = (() => {
+      const layer = global.Router.background;
+      const cur = (layer && layer.current()) || { type: 'none', id: '' };
 
-    /* --- 外观 --- */
+      const chip = (label, on, fn) =>
+        h('button', {
+          class: 'bg-chip' + (on ? ' on' : ''),
+          text: label,
+          onclick: fn,
+        });
+
+      const chips = h('div', { class: 'bg-chips' });
+      /* 「极光」不是一个底图选项，而是**没有底图**这个状态本身。
+         原来它和黄昏/林间/夜色并列摆在一起，于是能出现「极光 + 一张照片」
+         这种自相矛盾的状态 —— 表现是半透明面板压在照片上，
+         像蒙了一层白内障，字也没法读。文案改成「移除底图」，语义就通了。 */
+      chips.appendChild(chip('移除底图（极光）', cur.type === 'none', () => {
+        if (layer) layer.clear();
+        ctx.rerender();
+      }));
+      ((layer && layer.presets) || []).forEach((p) => {
+        chips.appendChild(chip(p.name, cur.type === 'preset' && cur.id === p.id, () => {
+          if (layer) layer.setPreset(p.id);
+          ctx.rerender();
+        }));
+      });
+      chips.appendChild(h('button', {
+        class: 'bg-chip',
+        text: '上传…',
+        onclick: async () => {
+          const api = global.cijian;
+          if (!api || !api.pickBackground) {
+            global.UI.toast('这个版本不支持上传底图', '✦');
+            return;
+          }
+          const r = await api.pickBackground();
+          if (!r || r.canceled) return;          // 用户自己取消，不提示
+          if (!r.ok) {
+            global.UI.toast(r.error || '这个文件没能读进来', '✦');
+            return;
+          }
+          if (layer) layer.setFile(r.name);
+          global.UI.toast('底图换好了', '🖼');
+          ctx.rerender();
+        },
+      }));
+
+      const actions = h('div', { class: 'bg-actions' });
+      if (cur.type === 'image' || cur.type === 'video') {
+        actions.appendChild(h('span', {
+          class: 'bg-current',
+          text: (cur.type === 'video' ? '视频：' : '图片：') + (cur.name || ''),
+        }));
+      }
+      return h('div', { class: 'bg-picker' }, chips, actions);
+    })();
+
     box.appendChild(
       card('外观', [
         field(
-          '明暗模式',
-          '暖纸是产品默认的纸感语言；暗房是暖褐的屏 + 琥珀的光；空间是近黑底 + 毛玻璃层级，偏冷、信息密度更高。',
+          '强调色',
+          '界面上所有颜色的唯一来源。选「自动」时跟着底图走 —— 林间配绿、夜色配蓝、黄昏配暖橙，自己传的照片取它自己的主色调（饱和度会压低，免得脏）。',
+          h('div', { class: 'accent-col' }, accentRow, (() => {
+            /* 玻璃模糊程度，放在色块**下面**、和颜色那一行同宽。
+               整行铺开会太长（横跨整个卡片），而它和「界面长什么样」
+               是同一件事，收在颜色下面读起来是一条线。
+               原来是写死的、而且有底图时程序自动加一档 ——
+               那是"替你判断"；现在是一根明确的旋钮。 */
+            const row = h('div', { class: 'blur-row' });
+            /* 读之前先兜底：存档里可能没有这个键（老存档、或种子状态漏了），
+               直接读会显示成 undefined。 */
+            const cur = typeof settings.glassBlur === 'number' ? settings.glassBlur : 50;
+            settings.glassBlur = cur;
+            const out = h('output', { class: 'blur-out', text: String(cur) });
+            const input = h('input', {
+              type: 'range', min: '0', max: '100', step: '5',
+              class: 'blur-slider',
+              value: String(cur),
+              'aria-label': '玻璃模糊程度',
+            });
+            /* 划过的那一段是一个**独立的胶囊元素**，不是背景色块 ——
+               背景层没法单独圆角，右端会是直边，看起来像一块方块卡在槽里。
+               宽度按圆钮的真实行程算（见 css 的 .blur-fill）。 */
+            const box = h('div', {
+              class: 'blur-slider-box',
+              style: { '--fill-ratio': String(cur / 100) },
+            }, h('i', { class: 'blur-base' }), h('i', { class: 'blur-fill' }), input);
+            input.addEventListener('input', () => {
+              settings.glassBlur = Number(input.value);
+              Store.save();
+              out.textContent = String(settings.glassBlur);
+              box.style.setProperty('--fill-ratio', String(settings.glassBlur / 100));
+              // 光学层要重传那张降采样图，画面才会跟着动
+              if (global.Router.optics) global.Router.optics.refresh();
+            });
+            row.appendChild(h('span', { class: 'blur-tag', text: '清晰' }));
+            row.appendChild(box);
+            row.appendChild(h('span', { class: 'blur-tag', text: '糊' }));
+            row.appendChild(out);
+            // 不再配说明段落：两端的字 + 数字已经说清了，文字越少越好
+            return h('div', { class: 'blur-wrap' }, row);
+          })())
+        ),
+        field(
+          '明暗',
+          '暖纸是产品默认的纸感语言；暗房是暖褐的屏 + 琥珀的光；空间是近黑底 + 毛玻璃层级，偏冷、信息密度更高。它只决定玻璃的厚薄与取色档位，不再改颜色。',
           seg(
             [
               ['light', '浅色 · 暖纸'],
@@ -129,75 +243,10 @@
             document.documentElement.dataset.reduceMotion = v ? 'on' : 'off';
           })
         ),
-      ])
-    );
-
-    /* --- 背景 ---
-       规格里的 L0。照片和视频都可以，视频静音循环。
-       不设底图时用程序化极光 —— 那是最省电的一档，也是原来的样子。 */
-    box.appendChild(
-      card('背景', [
         field(
           '底图',
-          '选一张照片或一段视频铺在窗口最底层，界面会变成半透明玻璃压在它上面。不设底图时用程序化极光。',
-          (() => {
-            const layer = global.Router.background;
-            const cur = (layer && layer.current()) || { type: 'none', id: '' };
-
-            const chip = (label, on, fn) =>
-              h('button', {
-                class: 'bg-chip' + (on ? ' on' : ''),
-                text: label,
-                onclick: fn,
-              });
-
-            const chips = h('div', { class: 'bg-chips' });
-            /* 「极光」不是一个底图选项，而是**没有底图**这个状态本身。
-               原来它和黄昏/林间/夜色并列摆在一起，于是能出现「极光 + 一张照片」
-               这种自相矛盾的状态 —— 表现是半透明面板压在照片上，
-               像蒙了一层白内障，字也没法读。文案改成「移除底图」，语义就通了。 */
-            chips.appendChild(chip('移除底图（极光）', cur.type === 'none', () => {
-              if (layer) layer.clear();
-              ctx.rerender();
-            }));
-            ((layer && layer.presets) || []).forEach((p) => {
-              chips.appendChild(chip(p.name, cur.type === 'preset' && cur.id === p.id, () => {
-                if (layer) layer.setPreset(p.id);
-                ctx.rerender();
-              }));
-            });
-
-            const actions = h('div', { class: 'bg-actions' });
-            actions.appendChild(
-              h('button', {
-                class: 'btn btn--quiet',
-                onclick: async () => {
-                  const api = global.cijian;
-                  if (!api || !api.pickBackground) {
-                    global.UI.toast('这个版本不支持上传底图', '✦');
-                    return;
-                  }
-                  const r = await api.pickBackground();
-                  if (!r || r.canceled) return;          // 用户自己取消，不提示
-                  if (!r.ok) {
-                    global.UI.toast(r.error || '这个文件没能读进来', '✦');
-                    return;
-                  }
-                  if (layer) layer.setFile(r.name);
-                  global.UI.toast('底图换好了', '🖼');
-                  ctx.rerender();
-                },
-              }, h('span', { text: '上传图片 / 视频…' }))
-            );
-            if (cur.type === 'image' || cur.type === 'video') {
-              actions.appendChild(h('span', {
-                class: 'bg-current',
-                text: (cur.type === 'video' ? '视频：' : '图片：') + (cur.name || ''),
-              }));
-            }
-
-            return h('div', { class: 'bg-picker' }, chips, actions);
-          })()
+          '选一张照片或一段视频铺在窗口最底层，界面会变成半透明玻璃压在它上面 —— 底图是穿过玻璃的，不是被盖住的。不设底图时用程序化极光。',
+          bgControl
         ),
       ])
     );

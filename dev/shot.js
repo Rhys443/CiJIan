@@ -100,8 +100,19 @@ app.whenReady().then(async () => {
     },
   });
 
-  await win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  await wait(4000);
+  const qFlag = FLAGS.find((f) => f.startsWith('--q='));
+  await win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'),
+    qFlag ? { search: qFlag.slice('--q='.length) } : undefined);
+  /* --early=MS：开屏后 MS 毫秒就拍，不进后面的等待与设置流程。
+     「第一次打开时不对、重渲染一次就正常」这类首帧竞态，
+     按正常流程（等十几秒）永远拍不到现场 —— 必须能在动画中间按快门。 */
+  const earlyFlag = FLAGS.find((f) => f.startsWith('--early='));
+  if (earlyFlag) {
+    const ms = parseInt(earlyFlag.split('=')[1], 10) || 800;
+    await wait(ms);
+  } else {
+    await wait(4000);
+  }
 
   /* --clean：把上次留下的底图记忆清掉再重载。
      背景是持久化的（localStorage + userData 里的文件），
@@ -137,15 +148,18 @@ app.whenReady().then(async () => {
     await wait(1500);
   }
 
-  // 外观 + 路由
-  await win.webContents.executeJavaScript(
-    `window.CJ.Store.state.settings.mode = ${JSON.stringify(MODE)}; "ok"`);
-  await wait(250);
-  await win.webContents.executeJavaScript(
-    `window.Router.applyMode(); window.Router.go(${JSON.stringify(ROUTE)}); "ok"`);
+  // 外观 + 路由（--early 时跳过：那一步本身就是一次重渲染，
+  // 而首帧竞态要看的恰恰是**没有重渲染过**的画面）
+  if (!earlyFlag) {
+    await win.webContents.executeJavaScript(
+      `window.CJ.Store.state.settings.mode = ${JSON.stringify(MODE)}; "ok"`);
+    await wait(250);
+    await win.webContents.executeJavaScript(
+      `window.Router.applyMode(); window.Router.go(${JSON.stringify(ROUTE)}); "ok"`);
+  }
 
   // 等动画走完再截，否则会拍到半透明的中间态
-  await wait(ROUTE === 'review' ? 5200 : 3200);
+  if (!earlyFlag) await wait(ROUTE === 'review' ? 5200 : 3200);
 
   /* 协议自检：从主进程直接打一次 bg://，别从页面里打 ——
      页面的 fetch 受 connect-src 'none' 限制，永远是 "Failed to fetch"，
@@ -280,6 +294,156 @@ app.whenReady().then(async () => {
     await wait(900);
   }
 
+  /* --still：把极光的漂移停下来。
+     **做像素级对照必须加这个。** 极光的每一团光都在往随机的路点游走，
+     两次运行的位置完全不同 —— 跨进程去比同一个坐标的像素，
+     比出来的是两团不同的光，不是"改前改后"。已经因此白比过一轮。
+     关掉漂移之后（reduceMotion），光斑位置固定，画布逐像素可复现。 */
+  if (has('still')) {
+    await win.webContents.executeJavaScript(
+      `window.CJ.Store.state.settings.reduceMotion = true; window.Router.applyMode(); 'ok'`);
+    await wait(1200);
+  }
+
+  /* --outline：逐层彩色描边。
+     「窗口边上有一条灰带 / 角是方的」这类问题，光看图只能猜是哪一层；
+     猜错两次的代价是一整轮。这里把每一层的盒子边界直接画出来，
+     灰带贴着哪一条描边，它就是哪一层的。
+
+     用 outline 而不是 border：outline 不占布局、不加宽盒子，
+     量到的几何就是真实几何；而且要画在 border-box 上，不往外偏。 */
+  if (has('outline')) {
+    await win.webContents.executeJavaScript(`(() => {
+      const RING = [
+        ['body',           '#ff0000'],
+        ['.ambient',       '#00ff00'],
+        ['.optics-canvas', '#00ffff'],
+        ['.app',           '#ff00ff'],
+        ['.rail',          '#ffff00'],
+        ['.titlebar',      '#ff8800'],
+        ['.stage',         '#0000ff'],
+      ];
+      RING.forEach(([sel, col]) => {
+        document.querySelectorAll(sel).forEach((el) => {
+          el.style.outline = '1px solid ' + col;
+          el.style.outlineOffset = '0px';
+        });
+      });
+      return 'ok';
+    })()`);
+    await wait(500);
+  }
+
+  /* --geom：把每一层的真实盒子与计算样式打出来。
+     描边告诉你「线在哪」，几何告诉你「那是谁的边」——
+     两者对上才能定案，不用再靠"我觉得应该是它"。 */
+  if (has('geom')) {
+    const geom = await win.webContents.executeJavaScript(`(() => {
+      const dump = (sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return sel + ': none';
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return sel + ' rect=' + [r.left, r.top, r.width, r.height].map((v) => v.toFixed(1)).join(',') +
+          ' radius=' + cs.borderTopLeftRadius +
+          ' overflow=' + cs.overflow +
+          ' bg=' + cs.backgroundColor +
+          ' bgImage=' + (cs.backgroundImage === 'none' ? 'none' : cs.backgroundImage.slice(0, 70)) +
+          ' shadow=' + (cs.boxShadow === 'none' ? 'none' : cs.boxShadow.slice(0, 100)) +
+          ' transform=' + cs.transform +
+          ' z=' + cs.zIndex;
+      };
+      const lines = ['.ambient', '.optics-canvas', '.app', '.rail', '.titlebar', '.stage', '.view']
+        .map(dump);
+      const hits = [];
+      [1, 3, 6, 9, 12, 20, 40, 80, 120].forEach((x) => {
+        const el = document.elementFromPoint(x, Math.round(innerHeight / 2));
+        hits.push(x + '=' + (el ? (el.className || el.tagName) : 'null'));
+      });
+      /* 左缘附近**所有**可见元素（含不可命中的装饰层）。
+         查「边上那条带子是谁画的」时，"谁在 x<30 有盒子"是最直接的一问 ——
+         elementFromPoint 只给最上面那一个，而且跳过 pointer-events:none 的层。 */
+      const leftEdge = [];
+      document.querySelectorAll('body *').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) return;
+        if (r.left > 26 || r.right < 0) return;
+        const cs = getComputedStyle(el);
+        leftEdge.push((el.className || el.tagName) + ' [' + [r.left, r.top, r.width, r.height]
+          .map((v) => v.toFixed(1)).join(',') + '] pe=' + cs.pointerEvents +
+          ' anim=' + cs.animationName + ' z=' + cs.zIndex);
+      });
+      return JSON.stringify({
+        dpr: devicePixelRatio, iw: innerWidth, ih: innerHeight,
+        layers: lines, midRowHits: hits, leftEdgeEls: leftEdge,
+        optics: (window.Router && window.Router.optics && window.Router.optics.debug) || null,
+        adaptive: (window.Adaptive && window.Adaptive.debug) || null,
+        accent: document.documentElement.dataset.accent || '(none)',
+      }, null, 1);
+    })()`);
+    console.log('GEOM ' + geom);
+  }
+
+  /* --hide=xxx：逐层关掉再拍一张。
+     描边只能说明「某个盒子的边在哪」，说明不了「这条带子是谁画的」——
+     一条 8px 的带子完全可能是某一层**内部**的渐变或着色器输出出来的。
+     真正的证据是消去法：关掉这一层，带子跟着消失，就是它。
+     取值：canvas / ambient / appshadow / railbg / rail / titlebar / aurora / paper。 */
+  const hideFlag = FLAGS.find((f) => f.startsWith('--hide='));
+  if (hideFlag) {
+    const what = hideFlag.slice('--hide='.length);
+    await win.webContents.executeJavaScript(`(() => {
+      const all = (sel, prop, val) => document.querySelectorAll(sel)
+        .forEach((el) => el.style.setProperty(prop, val, 'important'));
+      const MAP = {
+        canvas:    () => all('.optics-canvas', 'display', 'none'),
+        ambient:   () => all('.ambient', 'display', 'none'),
+        appshadow: () => all('.app', 'box-shadow', 'none'),
+        railbg:    () => all('.rail', 'background', 'none'),
+        rail:      () => all('.rail', 'display', 'none'),
+        titlebar:  () => all('.titlebar', 'display', 'none'),
+        aurora:    () => all('.aurora', 'display', 'none'),
+        paper:     () => all('.paper-grain', 'display', 'none'),
+        app:       () => all('.app', 'display', 'none'),
+        grain:     () => all('.film-grain, .vignette', 'display', 'none'),
+      };
+      (${JSON.stringify(what)}.split(',')).forEach((k) => { (MAP[k] || (() => {}))(); });
+      return 'hid ' + ${JSON.stringify(what)};
+    })()`);
+    await wait(900);
+  }
+
+  /* --css="规则"：往页面里注入一段样式。
+     「消去法」要能关掉任意一层，而 --hide 只能覆盖已经想到的那几个。
+     这里给一个通用的注入口：把假设写成一条 CSS，拍一张，看它有没有消失。
+     注意里面的反引号会被 shell 吃掉，用普通引号写。 */
+  const cssFlag = FLAGS.find((f) => f.startsWith('--css='));
+  if (cssFlag) {
+    const rules = cssFlag.slice('--css='.length);
+    await win.webContents.insertCSS(rules);
+    await wait(700);
+  }
+
+  /* --js="表达式"：在页面里跑一段脚本，把结果打到控制台。
+     验证「设置改了之后令牌真的变了吗」这类问题，比截图快也比截图准 ——
+     一个色相差 3% 肉眼看不出来，但读一次令牌就知道了。 */
+  const jsFlag = FLAGS.find((f) => f.startsWith('--js='));
+  if (jsFlag) {
+    /* 必须 await：探针经常是「点开 → 等动画走完 → 再量」。
+       不 await 的话 JSON.stringify(Promise) 得到的是 {}，
+       看上去像"探针什么都没返回"，实际是没等它。
+       （这个坑在 dev/demo-shot.js 里踩过一次，这里同步修掉。） */
+    const r = await win.webContents.executeJavaScript(
+      `(async () => { try { return JSON.stringify(await (${jsFlag.slice('--js='.length)})); }
+                      catch (e) { return 'THREW ' + e.message; } })()`);
+    const root = await win.webContents.executeJavaScript(
+      `(() => { const cs = getComputedStyle(document.documentElement);
+        return [cs.getPropertyValue('--theme').trim(), cs.getPropertyValue('--theme-text').trim(),
+                document.documentElement.dataset.accent || '-'].join(' | '); })()`);
+    console.log('JS ' + r);
+    console.log('TOKENS theme | theme-text | data-accent = ' + root);
+  }
+
   /* 可选：截图前把内容区滚到底。
      设置页的「背景」卡片在折叠线以下，不滚就截不到。 */
   if (has('bottom')) {
@@ -319,7 +483,7 @@ app.whenReady().then(async () => {
   // 抬到最前，确保抓屏抓到的是它
   win.moveTop();
   win.focus();
-  await wait(900);
+  await wait(earlyFlag ? 120 : 900);
 
   const disp = screen.getPrimaryDisplay();
   const b = win.getBounds();                    // DIP，与缩略图同一坐标系

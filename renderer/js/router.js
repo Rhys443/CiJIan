@@ -86,6 +86,11 @@
       );
       card.appendChild(h('div', { class: 'rail-card__spark' }));
 
+      /* 这张卡现在是**入口**：按住缩小、松手弹出一整块日历
+         （只显示年月日是不够的，用户想看的是"这一轮走到哪了"）。
+         卡片每次存档变化都会重建，所以绑定放在这里、并由 bindCard 自己防重。 */
+      if (global.Calendar) global.Calendar.bindCard(card);
+
       const badge = this.navEl.querySelector('[data-badge="checkin"]');
       if (badge) {
         badge.textContent = done ? '已完成' : '待打卡';
@@ -111,10 +116,36 @@
       };
     },
 
+    /* 强调色：整页颜色**唯一**的来源。
+       以前是周期主题 / 场景 / 模式三处各写一套，靠层叠优先级分胜负，
+       于是经常出现「面板绿了、标题还是橙的」。
+       现在只算一个值，写到 documentElement 的 data-accent 上：
+
+         底图   → 自带一个推荐色相（林间绿 / 夜色蓝 / 黄昏橙 / 照片取均色）
+         强调色 → 手动选定的值直接覆盖它；'auto' 就用推荐值
+         明暗   → 完全不参与选色，只决定取哪一档（--theme-deep / --theme-hi）
+
+       没底图（极光）时跟着周期主题那一档：极光的底色本来就是它给的，
+       橙色默认保持原来的观感不变。 */
+    accent() {
+      const pick = (Store.state.settings && Store.state.settings.accent) || 'auto';
+      if (pick !== 'auto') return pick;
+      const bgLayer = this.background;
+      if (bgLayer && bgLayer.suggestAccent) {
+        const s = bgLayer.suggestAccent();
+        if (s) return s;
+      }
+      const FALLBACK = { move: 'orange', make: 'yellow', link: 'purple' };
+      return FALLBACK[themeById(Store.activeCycle().theme).id] || 'orange';
+    },
+
     applyTheme() {
       const cycle = Store.activeCycle();
+      /* 主题仍然写在 data-theme 上，但它现在只管极光的色调 ——
+         那一档属于「背景」，不属于「颜色」。 */
       document.documentElement.dataset.theme = themeById(cycle.theme).id;
-      // 凝光光效的颜色取自主题色，切主题后要同步一次
+      document.documentElement.dataset.accent = this.accent();
+      // 凝光光效的颜色取自强调色，换色后要同步一次
       if (global.Light) global.Light.syncColors();
       if (this.ambient) this.ambient.relayout();
       // 光学层的光斑颜色同样来自 CSS 令牌，换主题后要重新采一次

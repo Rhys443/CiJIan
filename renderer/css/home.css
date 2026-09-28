@@ -189,6 +189,13 @@
   border: 1px solid var(--border);
   background: var(--surface-solid);
   overflow: hidden;
+  /* 单独建一个层叠上下文。
+     格子是「圆角容器 + 里面一张铺满的照片」，而照片自己有合成的资格
+     （入场动画会给容器加图层）。首帧上两者如果被分到不同的合成层，
+     圆角裁切就可能来不及生效 —— 照片会溢出到格子方角之外，
+     看上去就是「格子外面那一圈底色跟着照片主色走了」，
+     重渲染一次又好了。isolation 把两者钉在同一个上下文里。 */
+  isolation: isolate;
   text-align: left;
   transition: transform var(--d-base) var(--e-overshoot), box-shadow var(--d-base) var(--e-out),
     border-color var(--d-base) var(--e-out);
@@ -217,6 +224,11 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* 图片自己也带一份圆角。
+     只靠父级 overflow:hidden 的话，首帧一旦分到不同合成层就会漏出来
+     （见上面 .cell 的 isolation 注释）。两道裁切都写上，
+     任何一帧里照片都不会跑出格子。 */
+  border-radius: inherit;
 }
 .cell__scrim {
   position: absolute;

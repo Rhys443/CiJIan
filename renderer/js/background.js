@@ -32,8 +32,12 @@
      填充（按钮渐变）/ 深色（浅底上的文字）/ 亮色（暗底上的文字）/ 光晕，
      因为换了色相之后感知亮度会变，只给一个值会从别的缝里漏出橙色。 */
   const PALETTES = {
+    /* 场景色被硬编码盖掉的老问题在这里收口：
+       preset 现在只报一个**色相名**（hue），具体的一组颜色由
+       tokens.css 的 [data-accent] 给。这样色相永远只有一个来源，
+       也不会再出现「面板绿了、标题还是橙的」。 */
     dusk: {
-      name: '黄昏',
+      name: '黄昏', hue: 'orange',
       sky: ['#1B2C4A', '#3E5C82', '#7C8FA8', '#D9A277', '#F3C489', '#FFD9A0'],
       sun: [0.665, 0.86, '255,246,222', '255,168,112'],
       ridges: ['rgba(96,116,140,0.88)', 'rgba(58,74,98,0.94)', 'rgba(28,38,54,0.98)'],
@@ -44,7 +48,7 @@
                 line: 'rgba(207,100,56,.34)' },
     },
     forest: {
-      name: '林间',
+      name: '林间', hue: 'green',
       sky: ['#1E2A24', '#2E4034', '#4A6350', '#7E9472', '#B9C79A', '#DCE3B8'],
       sun: [0.32, 0.62, '240,255,214', '170,200,140'],
       ridges: ['rgba(74,96,78,0.88)', 'rgba(46,62,50,0.94)', 'rgba(24,34,28,0.98)'],
@@ -55,7 +59,7 @@
                 line: 'rgba(78,138,60,.34)' },
     },
     night: {
-      name: '夜色',
+      name: '夜色', hue: 'blue',
       sky: ['#080B16', '#111a30', '#1B2A4A', '#2B3D63', '#3E5480', '#5A6E96'],
       sun: [0.78, 0.52, '200,222,255', '110,150,220'],
       ridges: ['rgba(48,62,92,0.9)', 'rgba(30,40,62,0.95)', 'rgba(16,22,36,0.98)'],
@@ -67,8 +71,34 @@
     },
   };
 
-  function paint(kind, W, H) {
-    const P = PALETTES[kind] || PALETTES.dusk;
+  /* ---------- 均色 → 色相名 ----------
+     只取色相，落到七个调好的锚点之一。近乎灰的图没有可信的色相，
+     返回 null 让调用方用兜底色 —— 硬猜一个会比"跟着主题走"更难看。 */
+  const ACCENT_ANCHORS = [
+    ['red', 8], ['orange', 26], ['yellow', 46], ['green', 108],
+    ['cyan', 182], ['blue', 220], ['purple', 285],
+  ];
+  function hueName(r, g, b) {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const l = (mx + mn) / 2;
+    const d = mx - mn;
+    const s = d === 0 ? 0 : (l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn));
+    if (s < 0.10 || d === 0) return null;
+    let hue;
+    if (mx === r) hue = ((g - b) / d) % 6;
+    else if (mx === g) hue = (b - r) / d + 2;
+    else hue = (r - g) / d + 4;
+    hue *= 60;
+    if (hue < 0) hue += 360;
+    let best = null, bestD = 1e9;
+    ACCENT_ANCHORS.forEach(([name, at]) => {
+      const dd = Math.min(Math.abs(hue - at), 360 - Math.abs(hue - at));
+      if (dd < bestD) { bestD = dd; best = name; }
+    });
+    return best;
+  }
+
+  function paint(kind, W, H) {    const P = PALETTES[kind] || PALETTES.dusk;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const x = c.getContext('2d');
@@ -171,14 +201,12 @@
       if (on) document.documentElement.dataset.bg = 'photo';
       else delete document.documentElement.dataset.bg;
 
-      /* 场景主题色：预设各自带一套强调色，由 data-scene 驱动 CSS 覆盖。
-         用户自己传的图没有配套配色，所以清掉这个属性、沿用默认。 */
-      if (cur.type === 'preset' && PALETTES[cur.id]) {
-        document.documentElement.dataset.scene = cur.id;
-      } else {
-        delete document.documentElement.dataset.scene;
-      }
-
+      /* 场景色不再由 CSS 负责：底图只报一个「推荐色相」，
+         真实的一组颜色由 tokens.css 的 [data-accent] 给，
+         由 Router.accent() 统一算出来写到 documentElement 上。
+         这里只负责在底图换掉之后请它重算一次。 */
+      delete document.documentElement.dataset.scene;
+      if (global.Router && global.Router.applyTheme) global.Router.applyTheme();
       if (!optics) return;
       if (!el) { optics.clearBackground(); return; }
       optics.setBackground(el, isVideo);
@@ -230,6 +258,35 @@
     const api = {
       /** 三张预设的元数据，供设置页渲染 */
       presets: Object.keys(PALETTES).map((id) => ({ id, name: PALETTES[id].name })),
+
+      /* 这张底图推荐哪个强调色相。
+         · 预设：自带一个（林间→绿、夜色→蓝、黄昏→橙）
+         · 用户上传的照片/视频：取整张的**均值色相**，再落到最近的
+           一个色相锚点上。饱和度与明度不取照片的 —— 照片的均值色
+           通常很脏（灰绿、土黄），直接用会得到一个说不清是什么的颜色；
+           用调好的那七组，等于把饱和度压到四成左右，
+           读起来才是「这套图的气质」。
+         · 拿不到（近乎灰的照片、视频还没出帧）→ 返回 null，由调用方兜底 */
+      suggestAccent() {
+        if (cur.type === 'preset') return PALETTES[cur.id] ? PALETTES[cur.id].hue : null;
+        if (!el) return null;
+        const w = el.videoWidth || el.naturalWidth || el.width || 0;
+        const h = el.videoHeight || el.naturalHeight || el.height || 0;
+        if (!w || !h) return null;
+        let r = 0, g = 0, b = 0, n = 0;
+        try {
+          const c = document.createElement('canvas');
+          c.width = 24; c.height = 24;
+          const x = c.getContext('2d', { willReadFrequently: true });
+          x.drawImage(el, 0, 0, 24, 24);
+          const d = x.getImageData(0, 0, 24, 24).data;
+          for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+        } catch (e) {
+          return null;   // 跨域源读不了像素：交给兜底，不影响使用
+        }
+        if (!n) return null;
+        return hueName(r / n / 255, g / n / 255, b / n / 255);
+      },
 
       current() { return Object.assign({}, cur); },
 

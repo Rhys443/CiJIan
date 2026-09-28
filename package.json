@@ -1,7 +1,7 @@
 {
   "name": "cijian",
   "productName": "Cijian",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "此间 · 15天唤醒计划 —— 拍立得打卡仪式感工具（Windows 桌面 Demo）",
   "main": "main.js",
   "author": "此间",

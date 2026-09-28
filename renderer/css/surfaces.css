@@ -128,12 +128,28 @@ body.framed .ambient {
    侧栏与内容区的交界
    一条 10px 宽的模糊带（两端淡出）+ 一道极淡的渐隐发丝线。
    比 border-right 轻得多，也更像材质之间的接缝。
-   ============================================================ */
-.rail-edge::after {
+
+   **选择器必须写成 .rail.rail-edge**（而不是 .rail-edge）：
+   这条带子靠 right:-10px 挂在侧栏**右缘**，而 glass.css 里的
+   .is-glass::after 有 `inset: 0` —— 两者同为 (0,1,1)，
+   而 glass.css 排在 surfaces.css 之后，于是层叠上 inset 赢，
+   left 被钉成 0；width:10px 又没被别人覆盖。
+   左右同时有值 + 又给了宽度 = 超定，按 LTR 规则 right 被丢弃 ——
+   整条带子从右缘跑到了**左缘**：10px 宽、满高、方角，
+   正是「窗口左边那条怎么都去不掉的灰带」，顶部还是方的（它没有圆角）。
+   前两轮分别猜了 .ambient 和 .app 的 overflow:clip，都没中，
+   因为问题根本不在相机/裁切，而在层叠。
+
+   提高一个类名把优先级抬到 (0,2,1) 是**结构性**的修法：
+   以后谁再往 glass.css 后面接样式表，也不会把它重新挤到左缘去。
+   left:auto 必须显式写 —— .rail-edge::after 自己从没声明过 left，
+   不写的话 left:0 会从 .is-glass::after 漏进来。 */
+.rail.rail-edge::after {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
+  left: auto;
   right: -10px;
   width: 10px;
   pointer-events: none;
@@ -150,7 +166,7 @@ body.framed .ambient {
   mask-image: linear-gradient(to bottom, transparent 0%, #000 13%, #000 87%, transparent 100%);
   opacity: 0.9;
 }
-.rail-edge::before {
+.rail.rail-edge::before {
   content: "";
   position: absolute;
   top: 0;

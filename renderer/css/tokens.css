@@ -197,37 +197,68 @@
   --rise-blur: 5px;
 }
 
-/* ---------- 主题皮肤：三套任务池 ---------- */
-[data-theme="move"] {
-  --theme: #cf6438;
-  --theme-deep: #a94a24;
-  /* 暗底上用的提亮版。每个主题/场景一次给三个值，
-     由「模式」去挑用哪一个（见 glass.css），而不是各处硬编码。
-     硬编码会导致换色相时填充跟着走、文字跟不上 —— 已经踩过。 */
-  --theme-hi: #ffb184;
-  --theme-soft: rgba(207, 100, 56, 0.13);
-  --theme-line: rgba(207, 100, 56, 0.32);
+/* ---------- 强调色：7 个色相 + 自动 ----------
+   设置页只有**一个**入口管整页颜色，所以颜色的唯一来源就是这一个属性。
+   以前是「周期主题 / 外观 / 场景」三个地方各自往 --theme 上写，
+   层叠优先级一打架就出「面板绿了、标题还是橙的」这类半身不遂的样子。
+
+   每个色相给的是**完整的一组**，不是把橙色转一下色相：
+     --theme       填充（主按钮渐变，上面压近白文字 → 必须够深）
+     --theme-deep  浅底上的文字 / 描边
+     --theme-hi    暗底上的文字（深色外观与照片底图用这一档）
+     --theme-soft / --theme-line / --theme-glow  光晕、描边、柔光
+   换色相之后**感知亮度会变**：黄和青比红蓝亮得多，同一个明度值压上去，
+   黄按钮上的白字根本看不清。所以黄必须压得比红深得多，
+   而不是共用一组明度。 */
+[data-accent="red"] {
+  --theme: #c8433a; --theme-deep: #9e2f28; --theme-hi: #ff9e93;
+  --theme-soft: rgba(200, 67, 58, 0.14); --theme-line: rgba(200, 67, 58, 0.34);
+  --theme-glow: rgba(200, 67, 58, 0.36);
+}
+[data-accent="orange"] {
+  --theme: #cf6438; --theme-deep: #a94a24; --theme-hi: #ffb184;
+  --theme-soft: rgba(207, 100, 56, 0.13); --theme-line: rgba(207, 100, 56, 0.32);
   --theme-glow: rgba(207, 100, 56, 0.34);
+}
+[data-accent="yellow"] {
+  --theme: #a87c1f; --theme-deep: #7e5b12; --theme-hi: #e8c86a;
+  --theme-soft: rgba(168, 124, 31, 0.15); --theme-line: rgba(168, 124, 31, 0.34);
+  --theme-glow: rgba(168, 124, 31, 0.34);
+}
+[data-accent="green"] {
+  --theme: #4e8a3c; --theme-deep: #33602a; --theme-hi: #9fd98a;
+  --theme-soft: rgba(78, 138, 60, 0.16); --theme-line: rgba(78, 138, 60, 0.34);
+  --theme-glow: rgba(78, 138, 60, 0.5);
+}
+[data-accent="cyan"] {
+  --theme: #2e8a8a; --theme-deep: #1f6464; --theme-hi: #8fdcdc;
+  --theme-soft: rgba(46, 138, 138, 0.15); --theme-line: rgba(46, 138, 138, 0.34);
+  --theme-glow: rgba(46, 138, 138, 0.4);
+}
+[data-accent="blue"] {
+  --theme: #3e6fc4; --theme-deep: #2a4e93; --theme-hi: #8fc2ff;
+  --theme-soft: rgba(62, 111, 196, 0.16); --theme-line: rgba(62, 111, 196, 0.34);
+  --theme-glow: rgba(62, 111, 196, 0.5);
+}
+[data-accent="purple"] {
+  --theme: #7d6a8f; --theme-deep: #60506f; --theme-hi: #c9b6ea;
+  --theme-soft: rgba(125, 106, 143, 0.16); --theme-line: rgba(125, 106, 143, 0.34);
+  --theme-glow: rgba(125, 106, 143, 0.34);
+}
+
+/* ---------- 周期主题：只剩「极光的色调」 ----------
+   **主题不再决定强调色。** 它本来就是「这一轮练什么」——
+   是内容，不是外观：只影响抽卡抽到哪一池任务。
+   这里只留两团极光的颜色，因为那属于「背景」，由「底图」那一行管。 */
+[data-theme="move"] {
   --aurora-1: rgba(240, 161, 132, 0.5);
   --aurora-2: rgba(217, 164, 65, 0.32);
 }
 [data-theme="make"] {
-  --theme: #b0793c;
-  --theme-deep: #8d5c25;
-  --theme-hi: #f0cd85;
-  --theme-soft: rgba(176, 121, 60, 0.13);
-  --theme-line: rgba(176, 121, 60, 0.32);
-  --theme-glow: rgba(176, 121, 60, 0.32);
   --aurora-1: rgba(226, 184, 116, 0.5);
   --aurora-2: rgba(150, 112, 138, 0.3);
 }
 [data-theme="link"] {
-  --theme: #7d6a8f;
-  --theme-deep: #60506f;
-  --theme-hi: #c9b6ea;
-  --theme-soft: rgba(125, 106, 143, 0.14);
-  --theme-line: rgba(125, 106, 143, 0.32);
-  --theme-glow: rgba(125, 106, 143, 0.32);
   --aurora-1: rgba(178, 162, 196, 0.5);
   --aurora-2: rgba(125, 154, 168, 0.34);
 }
